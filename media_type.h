@@ -1,0 +1,14 @@
+#ifndef D6155437_BD05_45B4_BE9D_3E3FFA81AB97
+#define D6155437_BD05_45B4_BE9D_3E3FFA81AB97
+
+namespace rtsp {
+
+enum class MediaCodecID {
+    CODEC_ID_NONE = 0,
+    CODEC_ID_H264 = 1,
+    CODEC_ID_H264 = 2
+};
+
+}
+
+#endif /* D6155437_BD05_45B4_BE9D_3E3FFA81AB97 */

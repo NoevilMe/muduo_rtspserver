@@ -1,4 +1,5 @@
 #include "logger/logger.h"
+#include "media_session.h"
 #include "rtsp_server.h"
 #include <iostream>
 
@@ -10,7 +11,11 @@ int main() {
 
     muduo::event_loop::EventLoop loop;
 
-    RtspServer rtsp_server(&loop, listen_addr, "RtspServer", true);
+    rtsp::RtspServer rtsp_server(&loop, listen_addr, "RtspServer", true);
+
+    rtsp::MediaSessionPtr session(new rtsp::MediaSession("live"));
+
+    rtsp_server.AddMediaSession(session);
 
     rtsp_server.Start();
 
