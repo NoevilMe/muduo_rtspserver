@@ -26,7 +26,7 @@ public:
                    muduo::event_loop::Timestamp timestamp);
 
 private:
-    std::shared_ptr<RtspRequestHeader>
+    std::shared_ptr<RtspRequestHead>
     ParseRequestHeader(muduo::net::Buffer *buf);
 
     bool ParseCSeq(muduo::net::Buffer *buf, int &seq);
@@ -35,15 +35,15 @@ private:
 
     void HandleRequestMethodOptions(
         muduo::net::Buffer *buf,
-        const std::shared_ptr<RtspRequestHeader> &header);
+        const std::shared_ptr<RtspRequestHead> &header);
 
     void HandleRequestMethodDescribe(
         muduo::net::Buffer *buf,
-        const std::shared_ptr<RtspRequestHeader> &header);
+        const std::shared_ptr<RtspRequestHead> &header);
 
     void
     HandleRequestMethodSetup(muduo::net::Buffer *buf,
-                             const std::shared_ptr<RtspRequestHeader> &header);
+                             const std::shared_ptr<RtspRequestHead> &header);
 
     std::string ShortResponseMessage(const std::string &version,
                                      RtspStatusCode code, int cseq);
@@ -51,7 +51,7 @@ private:
     void SendShortResponse(const std::string &version, RtspStatusCode code,
                            int cseq);
 
-    void SendShortResponse(const RtspResponseHeader &resp_header);
+    void SendShortResponse(const RtspResponseHead &resp_header);
 
 private:
     const muduo::net::TcpConnectionPtr tcp_conn_;

@@ -18,23 +18,27 @@ enum class RtspMethod {
     DESCRIBE,
     SETUP,
     PLAY,
+    PAUSE,
+    RECORD,
+    ANNOUNCE,
     TEARDOWN,
+    REDIRECT,
     GET_PARAMETER,
-    RTCP,
+    SET_PARAMETER,
     NONE
 };
 
-struct RtspRequestHeaderFirstLine {
+struct RtspRequestLine {
     RtspMethod method;
     std::string version;
     RtspUrl url;
 };
 
-struct RtspRequestHeader : public RtspRequestHeaderFirstLine {
+struct RtspRequestHead : public RtspRequestLine {
     int cseq = 0;
 };
 
-struct RespRequestOptions : public RtspRequestHeader {
+struct RespRequestOptions : public RtspRequestHead {
     std::string user_agent;
 };
 
@@ -56,16 +60,14 @@ enum class RtspStatusCode {
 
 const char *RtspStatusCodeToString(RtspStatusCode code);
 
-struct RtspResponseHeaderFirstLine {
+struct RtspStatusLine {
     std::string version;
     RtspStatusCode code;
-};
+}; // The first line of a Response message is the Status-Line
 
-struct RtspResponseHeader : public RtspResponseHeaderFirstLine {
+struct RtspResponseHead : public RtspStatusLine {
     int cseq = 0;
 };
-
-
 
 } // namespace rtsp
 

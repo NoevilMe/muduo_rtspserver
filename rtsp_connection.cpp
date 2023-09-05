@@ -49,7 +49,7 @@ void RtspConnection::OnMessage(const muduo::net::TcpConnectionPtr conn,
                                muduo::net::Buffer *buf,
                                muduo::event_loop::Timestamp timestamp) {
 
-    std::shared_ptr<RtspRequestHeader> header = ParseRequestHeader(buf);
+    std::shared_ptr<RtspRequestHead> header = ParseRequestHeader(buf);
     if (!header) {
         LOG_ERROR << "parse rtsp request header fail";
         conn->Shutdown();
@@ -70,7 +70,7 @@ void RtspConnection::OnMessage(const muduo::net::TcpConnectionPtr conn,
     LOG_DEBUG << conn->peer_addr().IpPort() << " received: " << left_data;
 }
 
-std::shared_ptr<RtspRequestHeader>
+std::shared_ptr<RtspRequestHead>
 RtspConnection::ParseRequestHeader(muduo::net::Buffer *buf) {
     const char *first_crlf = buf->FindCRLF();
     if (first_crlf) {
@@ -99,7 +99,7 @@ RtspConnection::ParseRequestHeader(muduo::net::Buffer *buf) {
             return nullptr;
         }
 
-        std::shared_ptr<RtspRequestHeader> req_header(new RtspRequestHeader());
+        std::shared_ptr<RtspRequestHead> req_header(new RtspRequestHead());
         req_header->method = rtsp_method;
         req_header->version.assign(version);
         req_header->url.entire = url;
@@ -166,9 +166,9 @@ void RtspConnection::DiscardAllData(muduo::net::Buffer *buf) {
 }
 
 void RtspConnection::HandleRequestMethodOptions(
-    muduo::net::Buffer *buf, const std::shared_ptr<RtspRequestHeader> &header) {
+    muduo::net::Buffer *buf, const std::shared_ptr<RtspRequestHead> &header) {
 
-    RtspResponseHeader resp_header;
+    RtspResponseHead resp_header;
     resp_header.version = header->version;
     resp_header.cseq = header->cseq;
 
@@ -200,7 +200,7 @@ void RtspConnection::HandleRequestMethodOptions(
 }
 
 void RtspConnection::HandleRequestMethodDescribe(
-    muduo::net::Buffer *buf, const std::shared_ptr<RtspRequestHeader> &header) {
+    muduo::net::Buffer *buf, const std::shared_ptr<RtspRequestHead> &header) {
 
     std::string accept_application_type;
 
@@ -216,7 +216,7 @@ void RtspConnection::HandleRequestMethodDescribe(
         }
     }
 
-    RtspResponseHeader resp_header;
+    RtspResponseHead resp_header;
     resp_header.version = header->version;
     resp_header.cseq = header->cseq;
 
@@ -253,7 +253,7 @@ void RtspConnection::HandleRequestMethodDescribe(
 }
 
 void RtspConnection::HandleRequestMethodSetup(
-    muduo::net::Buffer *buf, const std::shared_ptr<RtspRequestHeader> &header) {
+    muduo::net::Buffer *buf, const std::shared_ptr<RtspRequestHead> &header) {
 
     std::string protocol;
     std::string cast;
@@ -308,7 +308,7 @@ void RtspConnection::SendShortResponse(const std::string &version,
     tcp_conn_->Send(buf, size);
 }
 
-void RtspConnection::SendShortResponse(const RtspResponseHeader &resp_header) {
+void RtspConnection::SendShortResponse(const RtspResponseHead &resp_header) {
     SendShortResponse(resp_header.version, resp_header.code, resp_header.cseq);
 }
 
