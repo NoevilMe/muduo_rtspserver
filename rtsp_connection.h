@@ -8,6 +8,7 @@
 namespace rtsp {
 
 class MediaSession;
+class RtspSession;
 
 using GetMediaSessionCallback =
     std::function<std::shared_ptr<MediaSession>(const std::string &)>;
@@ -27,22 +28,22 @@ public:
 
 private:
     std::shared_ptr<RtspRequestHead>
-    ParseRequestHeader(muduo::net::Buffer *buf);
+    ParseRequestHead(muduo::net::Buffer *buf);
 
     bool ParseCSeq(muduo::net::Buffer *buf, int &seq);
 
     void DiscardAllData(muduo::net::Buffer *buf);
 
-    void HandleRequestMethodOptions(
-        muduo::net::Buffer *buf,
-        const std::shared_ptr<RtspRequestHead> &header);
-
-    void HandleRequestMethodDescribe(
-        muduo::net::Buffer *buf,
-        const std::shared_ptr<RtspRequestHead> &header);
+    void
+    HandleMethodOptions(muduo::net::Buffer *buf,
+                               const std::shared_ptr<RtspRequestHead> &header);
 
     void
-    HandleRequestMethodSetup(muduo::net::Buffer *buf,
+    HandleMethodDescribe(muduo::net::Buffer *buf,
+                                const std::shared_ptr<RtspRequestHead> &header);
+
+    void
+    HandleMethodSetup(muduo::net::Buffer *buf,
                              const std::shared_ptr<RtspRequestHead> &header);
 
     std::string ShortResponseMessage(const std::string &version,
@@ -53,10 +54,13 @@ private:
 
     void SendShortResponse(const RtspResponseHead &resp_header);
 
+    void SendResponse(const char *buf, int size);
+
 private:
     const muduo::net::TcpConnectionPtr tcp_conn_;
 
     std::weak_ptr<MediaSession> active_media_session_;
+    std::shared_ptr<RtspSession> rtsp_session_;
 
     GetMediaSessionCallback get_media_session_callback_;
 };

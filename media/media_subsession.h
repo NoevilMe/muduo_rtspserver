@@ -11,6 +11,8 @@ public:
     virtual ~MediaSubsession();
 
     virtual std::string GetSdp(uint track_id) = 0;
+
+    static std::string TrackId(uint track_id);
 };
 
 } // namespace rtsp

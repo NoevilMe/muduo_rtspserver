@@ -17,6 +17,8 @@ add_executable(
   rtsp_message.cpp
   utils.cpp
   media_session.cpp
+  rtsp_session.cpp
+  rtp_connection.cpp
   media/media_subsession.cpp
   media/h264_file_subsession.cpp)
 target_link_libraries(rtsp_server PRIVATE muduo_net pthread)

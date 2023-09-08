@@ -5,6 +5,8 @@
 
 namespace rtsp {
 
+/// https://www.ietf.org/rfc/rfc2326.txt
+
 struct RtspUrl {
     std::string entire;
     std::string prefix;

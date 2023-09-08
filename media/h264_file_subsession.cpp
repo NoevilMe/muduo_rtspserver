@@ -11,8 +11,8 @@ std::string H264FileSubsession::GetSdp(uint track_id) {
              "m=video 0 RTP/AVP 96\r\n"
              "a=rtpmap:96 H264/90000\r\n"
              "a=framerate:25\r\n"
-             "a=control:track%u\r\n",
-             track_id);
+             "a=control:%s\r\n",
+             TrackId(track_id).data());
     return media_sdp;
 }
 

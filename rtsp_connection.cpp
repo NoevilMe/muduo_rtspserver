@@ -3,6 +3,7 @@
 #include "logger/logger.h"
 #include "media_session.h"
 #include "net/tcp_connection.h"
+#include "rtsp_session.h"
 #include "utils.h"
 
 namespace rtsp {
@@ -49,7 +50,7 @@ void RtspConnection::OnMessage(const muduo::net::TcpConnectionPtr conn,
                                muduo::net::Buffer *buf,
                                muduo::event_loop::Timestamp timestamp) {
 
-    std::shared_ptr<RtspRequestHead> header = ParseRequestHeader(buf);
+    std::shared_ptr<RtspRequestHead> header = ParseRequestHead(buf);
     if (!header) {
         LOG_ERROR << "parse rtsp request header fail";
         conn->Shutdown();
@@ -57,11 +58,11 @@ void RtspConnection::OnMessage(const muduo::net::TcpConnectionPtr conn,
     }
 
     if (header->method == RtspMethod::OPTIONS) {
-        HandleRequestMethodOptions(buf, header);
+        HandleMethodOptions(buf, header);
     } else if (header->method == RtspMethod::DESCRIBE) {
-        HandleRequestMethodDescribe(buf, header);
+        HandleMethodDescribe(buf, header);
     } else if (header->method == RtspMethod::SETUP) {
-        HandleRequestMethodSetup(buf, header);
+        HandleMethodSetup(buf, header);
     } else {
         LOG_ERROR << "unhandled method " << header->method;
     }
@@ -71,7 +72,7 @@ void RtspConnection::OnMessage(const muduo::net::TcpConnectionPtr conn,
 }
 
 std::shared_ptr<RtspRequestHead>
-RtspConnection::ParseRequestHeader(muduo::net::Buffer *buf) {
+RtspConnection::ParseRequestHead(muduo::net::Buffer *buf) {
     const char *first_crlf = buf->FindCRLF();
     if (first_crlf) {
         char method[32] = {0};
@@ -79,7 +80,7 @@ RtspConnection::ParseRequestHeader(muduo::net::Buffer *buf) {
         char version[16] = {0};
 
         if (sscanf(buf->Peek(), "%s %s %s", method, url, version) != 3) {
-            LOG_ERROR << "Invalid RTSP first line data";
+            LOG_ERROR << "Invalid RTSP reques line data";
             return nullptr;
         }
 
@@ -131,7 +132,7 @@ RtspConnection::ParseRequestHeader(muduo::net::Buffer *buf) {
             return nullptr;
         }
 
-        LOG_DEBUG << "rtsp method: " << RtspMethodToString(req_header->method)
+        LOG_DEBUG << "rtsp method: " << req_header->method
                   << ", version: " << req_header->version
                   << ", url: " << req_header->url.entire
                   << " (host: " << req_header->url.host
@@ -165,7 +166,7 @@ void RtspConnection::DiscardAllData(muduo::net::Buffer *buf) {
     LOG_DEBUG << "discard left data: " << buf->RetrieveAllAsString();
 }
 
-void RtspConnection::HandleRequestMethodOptions(
+void RtspConnection::HandleMethodOptions(
     muduo::net::Buffer *buf, const std::shared_ptr<RtspRequestHead> &header) {
 
     RtspResponseHead resp_header;
@@ -188,9 +189,7 @@ void RtspConnection::HandleRequestMethodOptions(
             resp_header.version.data(), (int)resp_header.code,
             RtspStatusCodeToString(resp_header.code), resp_header.cseq);
 
-        LOG_DEBUG << "response data: " << send_buf << ", size " << data_size;
-
-        tcp_conn_->Send(send_buf, data_size);
+        SendResponse(send_buf, data_size);
         active_media_session_ = session;
 
     } else {
@@ -199,7 +198,7 @@ void RtspConnection::HandleRequestMethodOptions(
     }
 }
 
-void RtspConnection::HandleRequestMethodDescribe(
+void RtspConnection::HandleMethodDescribe(
     muduo::net::Buffer *buf, const std::shared_ptr<RtspRequestHead> &header) {
 
     std::string accept_application_type;
@@ -244,21 +243,16 @@ void RtspConnection::HandleRequestMethodDescribe(
                          RtspStatusCodeToString(resp_header.code),
                          resp_header.cseq, sdp.length(), sdp.data());
 
-            LOG_DEBUG << "response data: " << data_buf << ", size "
-                      << data_size;
-
-            tcp_conn_->Send(data_buf, data_size);
+            SendResponse(data_buf, data_size);
         }
     }
 }
 
-void RtspConnection::HandleRequestMethodSetup(
+void RtspConnection::HandleMethodSetup(
     muduo::net::Buffer *buf, const std::shared_ptr<RtspRequestHead> &header) {
 
-    std::string protocol;
-    std::string cast;
-    int send_port = 0;
-    int recv_port = 0;
+    unsigned short rtp_port = 0;
+    unsigned short rtcp_port = 0;
 
     std::string line;
     while (buf->RetrieveCRLFLine(false, line)) {
@@ -270,12 +264,54 @@ void RtspConnection::HandleRequestMethodSetup(
             char pro_buf[20] = {0};
             char cast_buf[20] = {0};
 
-            sscanf(transport.data(), "%[^;];%[^;];client_port=%d-%d", pro_buf,
-                   cast_buf, &send_port, &recv_port);
+            if (sscanf(transport.data(), "%[^;];%[^;];client_port=%hu-%hu",
+                       pro_buf, cast_buf, &rtp_port, &rtcp_port) == 4) {
 
-            LOG_DEBUG << "transport " << transport << ", protocol " << pro_buf
-                      << ", cast " << cast_buf << ", send port " << send_port
-                      << ", recv port " << recv_port;
+                std::string protocol(pro_buf);
+                std::string cast(cast_buf);
+
+                LOG_DEBUG << "transport " << transport << ", media protocol "
+                          << protocol << ", " << cast_buf << ", rtp port "
+                          << rtp_port << ", rtcp port " << rtcp_port;
+
+                auto peer_ip = tcp_conn_->peer_addr().Ip();
+                muduo::net::InetAddress peer_rtp_addr(peer_ip, rtp_port);
+                muduo::net::InetAddress peer_rtcp_addr(peer_ip, rtcp_port);
+
+                unsigned short local_rtp_port;
+                unsigned short local_rtcp_port;
+
+                rtsp_session_.reset(new RtspSession(tcp_conn_->loop()));
+                rtsp_session_->Setup(peer_rtp_addr, peer_rtcp_addr,
+                                     local_rtp_port, local_rtcp_port);
+
+                auto session_id = rtsp_session_->id();
+                LOG_DEBUG << "local rtp port " << local_rtp_port
+                          << ", rtcp port " << local_rtcp_port
+                          << ", session id " << session_id;
+
+                RtspResponseHead resp_header;
+                resp_header.version = header->version;
+                resp_header.cseq = header->cseq;
+                resp_header.code = RtspStatusCode::OK;
+
+                char send_buf[300] = {0};
+                int size =
+                    snprintf(send_buf, sizeof(send_buf),
+                             "%s %d %s\r\n"
+                             "CSeq: %d\r\n"
+                             "Transport: %s;server_port=%hu-%hu\r\n"
+                             "Session: %d\r\n"
+                             "\r\n",
+                             resp_header.version.data(), (int)resp_header.code,
+                             RtspStatusCodeToString(resp_header.code),
+                             resp_header.cseq, transport.data(), local_rtp_port,
+                             local_rtcp_port, session_id);
+                SendResponse(send_buf, size);
+            } else {
+                LOG_ERROR << "unsupported setup params";
+            }
+
         } else if (utils::StartsWith(line, "User-Agent: ")) {
             LOG_DEBUG << "agent " << line.substr(strlen("User-Agent: "));
         }
@@ -310,6 +346,11 @@ void RtspConnection::SendShortResponse(const std::string &version,
 
 void RtspConnection::SendShortResponse(const RtspResponseHead &resp_header) {
     SendShortResponse(resp_header.version, resp_header.code, resp_header.cseq);
+}
+
+void RtspConnection::SendResponse(const char *buf, int size) {
+    LOG_DEBUG << "size " << size << " -\r\n" << muduo::StringPiece(buf, size);
+    tcp_conn_->Send(buf, size);
 }
 
 } // namespace rtsp
