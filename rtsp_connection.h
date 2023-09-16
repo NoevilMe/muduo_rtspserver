@@ -17,7 +17,7 @@ class RtspConnection {
 public:
     RtspConnection(const muduo::net::TcpConnectionPtr &conn,
                    const GetMediaSessionCallback &cb);
-    ~RtspConnection() = default;
+    ~RtspConnection();
 
     void OnMessage(const muduo::net::TcpConnectionPtr conn,
                    muduo::net::Buffer *buf,
@@ -56,7 +56,7 @@ private:
     void SendResponse(const char *buf, int size);
 
 private:
-    const muduo::net::TcpConnectionPtr tcp_conn_;
+    muduo::net::TcpConnectionPtr tcp_conn_;
     GetMediaSessionCallback get_media_session_callback_;
 
     std::weak_ptr<MediaSession> active_media_session_;

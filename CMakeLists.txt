@@ -3,7 +3,7 @@ project(muduo_rtspserver)
 
 set(CMAKE_CXX_STANDARD 11)
 
-set(CMAKE_CXX_FLAGS "-g")
+set(CMAKE_CXX_FLAGS "-g -O0")
 
 set(SERVER_TOP ${CMAKE_SOURCE_DIR})
 

@@ -25,6 +25,9 @@ private:
     MediaSubsessionPtr media_subsession_;
     RtpSinkPtr rtp_sink_;
     MultiFrameSourcePtr frame_source_;
+
+    uint16_t init_seq_;
+    uint32_t ssrc_;
 };
 
 using RtspStreamStatePtr = std::shared_ptr<RtspStreamState>;

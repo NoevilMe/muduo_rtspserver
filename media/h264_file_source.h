@@ -31,12 +31,6 @@ public:
 
 private:
     int GetAnnexbNALU(H264Nalu *nalu);
-
-private:
-    char *m_buf = nullptr;
-    int m_buf_size = 0;
-    int m_bytes_used = 0;
-    int m_count = 0;
 };
 
 } // namespace muduo_media

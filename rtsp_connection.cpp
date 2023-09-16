@@ -45,6 +45,17 @@ RtspConnection::RtspConnection(const muduo::net::TcpConnectionPtr &conn,
     tcp_conn_->set_message_callback(
         std::bind(&RtspConnection::OnMessage, this, std::placeholders::_1,
                   std::placeholders::_2, std::placeholders::_3));
+
+    LOG_DEBUG << "RtspConnection::ctor[" << tcp_conn_->name() << "] at "
+              << this;
+}
+
+RtspConnection::~RtspConnection() {
+    LOG_DEBUG << "RtspConnection::dtor[" << tcp_conn_->name() << "] at "
+              << this;
+
+    // tcp_conn_.reset();
+    rtsp_session_.reset();
 }
 
 void RtspConnection::OnMessage(const muduo::net::TcpConnectionPtr conn,

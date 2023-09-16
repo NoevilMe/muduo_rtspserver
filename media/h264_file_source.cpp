@@ -1,4 +1,5 @@
 #include "h264_file_source.h"
+#include "eventloop/timestamp.h"
 #include "media/av_packet.h"
 
 #include <cstring>
@@ -174,19 +175,22 @@ bool H264FileSource::GetNextFrame(AVPacket *packet) {
         return false;
     }
 
-    H264Nalu *n = new H264Nalu;
+    std::unique_ptr<H264Nalu> n(new H264Nalu);
     int buffersize = 100000;
 
     n->max_size = buffersize;
     n->buf = new unsigned char[buffersize];
 
-    int data_lenth = GetAnnexbNALU(n);
+    int data_lenth = GetAnnexbNALU(n.get());
     if (data_lenth > 0) {
         packet->size = n->len;
         packet->buffer.reset(n->buf);
-    }
 
-    delete n;
+        auto now = muduo::event_loop::Timestamp::Now();
+        packet->timestamp = (now.MicrosecondsSinceEpoch() + 500) / 1000 * 90;
+    } else {
+        delete[] n->buf;
+    }
 
     return data_lenth > 0;
 }
