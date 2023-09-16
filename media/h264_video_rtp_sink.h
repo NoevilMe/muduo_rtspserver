@@ -10,7 +10,7 @@ class H264VideoRtpSink : public MultiFrameRtpSink {
 public:
     H264VideoRtpSink(
         const std::shared_ptr<muduo::net::UdpVirtualConnection> &udp_conn);
-    virtual ~H264VideoRtpSink() = default;
+    virtual ~H264VideoRtpSink();
 
     void Send(const void *data, int len,
               const std::shared_ptr<void> &add_data) override;

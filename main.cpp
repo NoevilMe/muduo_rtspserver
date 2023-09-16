@@ -6,7 +6,7 @@
 
 int main() {
 
-    muduo::log::Logger::set_log_level(muduo::log::Logger::DEBUG);
+    muduo::log::Logger::set_log_level(muduo::log::Logger::TRACE);
 
     muduo::net::InetAddress listen_addr(8554);
 

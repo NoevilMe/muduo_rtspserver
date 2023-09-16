@@ -8,9 +8,14 @@
 namespace muduo_media {
 RtspSession::RtspSession(muduo::event_loop::EventLoop *loop,
                          const std::weak_ptr<MediaSession> &media_session)
-    : loop_(loop), media_session_(media_session), id_(-1) {}
+    : loop_(loop), media_session_(media_session), id_(-1) {
+
+    LOG_DEBUG << "RtspSession::ctor at " << this;
+}
 
 RtspSession::~RtspSession() {
+    LOG_DEBUG << "RtspSession::dtor at " << this;
+
     states_.clear();
     rtp_conn_.reset();
     rtcp_conn_.reset();

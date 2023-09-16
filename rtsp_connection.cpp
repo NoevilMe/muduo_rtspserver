@@ -62,7 +62,12 @@ void RtspConnection::OnMessage(const muduo::net::TcpConnectionPtr conn,
                                muduo::net::Buffer *buf,
                                muduo::event_loop::Timestamp timestamp) {
 
-    std::shared_ptr<RtspRequestHead> header = ParseRequestHead(buf);
+    std::string data = buf->TryRetrieveAllAsString();
+    LOG_DEBUG << "try receive data [" << data << "]";
+
+    std::vector<std::string> gap_lines;
+
+    std::shared_ptr<RtspRequestHead> header = ParseRequestHead(buf, gap_lines);
     if (!header) {
         LOG_ERROR << "parse rtsp request header fail";
         conn->Shutdown();
@@ -72,9 +77,9 @@ void RtspConnection::OnMessage(const muduo::net::TcpConnectionPtr conn,
     if (header->method == RtspMethod::OPTIONS) {
         HandleMethodOptions(buf, header);
     } else if (header->method == RtspMethod::DESCRIBE) {
-        HandleMethodDescribe(buf, header);
+        HandleMethodDescribe(buf, header, gap_lines);
     } else if (header->method == RtspMethod::SETUP) {
-        HandleMethodSetup(buf, header);
+        HandleMethodSetup(buf, header, gap_lines);
     } else if (header->method == RtspMethod::PLAY) {
         HandleMethodPlay(buf, header);
     } else if (header->method == RtspMethod::TEARDOWN) {
@@ -84,11 +89,13 @@ void RtspConnection::OnMessage(const muduo::net::TcpConnectionPtr conn,
     }
 
     auto left_data = buf->RetrieveAllAsString();
-    LOG_DEBUG << conn->peer_addr().IpPort() << " received: " << left_data;
+    LOG_DEBUG << conn->peer_addr().IpPort() << " received [" << left_data
+              << "]";
 }
 
 std::shared_ptr<RtspRequestHead>
-RtspConnection::ParseRequestHead(muduo::net::Buffer *buf) {
+RtspConnection::ParseRequestHead(muduo::net::Buffer *buf,
+                                 std::vector<std::string> &gap_lines) {
     const char *first_crlf = buf->FindCRLF();
     if (first_crlf) {
         char method[32] = {0};
@@ -142,20 +149,31 @@ RtspConnection::ParseRequestHead(muduo::net::Buffer *buf) {
 
         // 第一行处理完毕
         buf->RetrieveUntil(first_crlf + 2);
+        LOG_INFO << "rtsp method: " << req_header->method
+                 << ", version: " << req_header->version
+                 << ", url: " << req_header->url.entire
+                 << " (host: " << req_header->url.host
+                 << ", port:" << req_header->url.port
+                 << ", session: " << req_header->url.session << ")";
 
-        if (!ParseCSeq(buf, req_header->cseq)) {
-            LOG_ERROR << "parse cseq fail";
-            return nullptr;
+        std::string line;
+        while (buf->RetrieveCRLFLine(false, line)) {
+            if (utils::StartsWith(line, kRtspCSeq)) {
+                sscanf(line.data(), "%*[^:]: %d", &req_header->cseq);
+                break;
+            } else {
+                gap_lines.push_back(line);
+                LOG_DEBUG << "gap line [" << line << "]";
+            }
         }
 
-        LOG_DEBUG << "rtsp method: " << req_header->method
-                  << ", version: " << req_header->version
-                  << ", url: " << req_header->url.entire
-                  << " (host: " << req_header->url.host
-                  << ", port:" << req_header->url.port
-                  << ", session: " << req_header->url.session << "), "
-                  << "CSeq: " << req_header->cseq;
-        return req_header;
+        if (req_header->cseq == 0) {
+            LOG_ERROR << "parse CSeq fail";
+            return nullptr;
+        } else {
+            LOG_INFO << "CSeq: " << req_header->cseq;
+            return req_header;
+        }
     } else {
         return nullptr;
     }
@@ -214,7 +232,8 @@ void RtspConnection::HandleMethodOptions(
 }
 
 void RtspConnection::HandleMethodDescribe(
-    muduo::net::Buffer *buf, const std::shared_ptr<RtspRequestHead> &header) {
+    muduo::net::Buffer *buf, const std::shared_ptr<RtspRequestHead> &header,
+    const std::vector<std::string> &gap_lines) {
 
     // 如果没有执行OPTIONS
     if (active_media_session_.expired()) {
@@ -226,6 +245,12 @@ void RtspConnection::HandleMethodDescribe(
     }
 
     std::string accept_application_type;
+    for (auto &&line : gap_lines) {
+        if (utils::StartsWith(line, "Accept: ")) {
+            accept_application_type = line.substr(strlen("Accept: "));
+            LOG_DEBUG << "accept type " << accept_application_type;
+        }
+    }
 
     std::string line;
     while (buf->RetrieveCRLFLine(false, line)) {
@@ -274,7 +299,8 @@ void RtspConnection::HandleMethodDescribe(
 }
 
 void RtspConnection::HandleMethodSetup(
-    muduo::net::Buffer *buf, const std::shared_ptr<RtspRequestHead> &header) {
+    muduo::net::Buffer *buf, const std::shared_ptr<RtspRequestHead> &header,
+    const std::vector<std::string> &gap_lines) {
 
     RtspResponseHead resp_header;
     resp_header.version = header->version;
@@ -307,11 +333,7 @@ void RtspConnection::HandleMethodSetup(
     unsigned short rtp_port = 0;
     unsigned short rtcp_port = 0;
 
-    std::string line;
-    while (buf->RetrieveCRLFLine(false, line)) {
-        // LOG_DEBUG << "line data: " << line << " length " <<
-        // line.length();
-
+    auto line_handler([&, this](const std::string &line) {
         if (utils::StartsWith(line, "Transport: ")) {
             std::string transport = line.substr(strlen("Transport: "));
 
@@ -368,6 +390,17 @@ void RtspConnection::HandleMethodSetup(
         } else if (utils::StartsWith(line, "User-Agent: ")) {
             LOG_DEBUG << "agent " << line.substr(strlen("User-Agent: "));
         }
+    });
+
+    for (auto &line : gap_lines) {
+        line_handler(line);
+    }
+
+    std::string line;
+    while (buf->RetrieveCRLFLine(false, line)) {
+        // LOG_DEBUG << "line data: " << line << " length " <<
+        // line.length();
+        line_handler(line);
     }
 }
 

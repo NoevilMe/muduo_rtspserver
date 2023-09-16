@@ -24,7 +24,9 @@ public:
                    muduo::event_loop::Timestamp timestamp);
 
 private:
-    std::shared_ptr<RtspRequestHead> ParseRequestHead(muduo::net::Buffer *buf);
+    std::shared_ptr<RtspRequestHead>
+    ParseRequestHead(muduo::net::Buffer *buf,
+                     std::vector<std::string> &gap_lines);
 
     bool ParseCSeq(muduo::net::Buffer *buf, int &seq);
 
@@ -34,10 +36,12 @@ private:
                              const std::shared_ptr<RtspRequestHead> &header);
 
     void HandleMethodDescribe(muduo::net::Buffer *buf,
-                              const std::shared_ptr<RtspRequestHead> &header);
+                              const std::shared_ptr<RtspRequestHead> &header,
+                              const std::vector<std::string> &gap_lines);
 
     void HandleMethodSetup(muduo::net::Buffer *buf,
-                           const std::shared_ptr<RtspRequestHead> &header);
+                           const std::shared_ptr<RtspRequestHead> &header,
+                           const std::vector<std::string> &gap_lines);
 
     void HandleMethodPlay(muduo::net::Buffer *buf,
                           const std::shared_ptr<RtspRequestHead> &header);

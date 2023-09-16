@@ -1,5 +1,6 @@
 #include "h264_file_source.h"
 #include "eventloop/timestamp.h"
+#include "logger/logger.h"
 #include "media/av_packet.h"
 
 #include <cstring>
@@ -56,9 +57,13 @@ static bool MatchStartCode4Bytes(unsigned char *Buf) {
         return true;
 }
 
-H264FileSource::H264FileSource(FILE *file) : MultiFrameFileSource(file) {}
+H264FileSource::H264FileSource(FILE *file) : MultiFrameFileSource(file) {
+    LOG_DEBUG << "H264FileSource::ctor at " << this;
+}
 
-H264FileSource::~H264FileSource() {}
+H264FileSource::~H264FileSource() {
+    LOG_DEBUG << "H264FileSource::dtor at " << this;
+}
 
 int H264FileSource::GetAnnexbNALU(H264Nalu *nalu) {
     nalu->len = 0; // reset immediately
