@@ -12,7 +12,7 @@ public:
     RtpSink() = default;
     virtual ~RtpSink() = default;
 
-    virtual void Send(const void *data, int len,
+    virtual void Send(const unsigned char *data, int len,
                       const std::shared_ptr<void> &add_data) = 0;
 };
 

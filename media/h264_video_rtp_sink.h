@@ -12,11 +12,13 @@ public:
         const std::shared_ptr<muduo::net::UdpVirtualConnection> &udp_conn);
     virtual ~H264VideoRtpSink();
 
-    void Send(const void *data, int len,
+    void Send(const unsigned char *data, int len,
               const std::shared_ptr<void> &add_data) override;
 
 private:
     const std::shared_ptr<muduo::net::UdpVirtualConnection> &udp_conn_;
+
+     uint16_t init_seq_;
 };
 
 } // namespace muduo_media

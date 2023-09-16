@@ -16,6 +16,9 @@
 
 #define RTP_PACKET_PREPEND_SIZE 20
 
+#define RTP_FU_A_TYPE 28
+#define RTP_FU_A_HEAD_LEN 2 //  FU Indicator +  FU Header
+
 static_assert(RTP_PACKET_PREPEND_SIZE > RTP_HEADER_SIZE);
 
 /*  https://www.rfc-editor.org/rfc/rfc3550.txt

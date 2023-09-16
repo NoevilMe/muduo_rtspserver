@@ -17,7 +17,7 @@ int main() {
     muduo_media::MediaSessionPtr session(new muduo_media::MediaSession("live"));
 
     std::shared_ptr<muduo_media::H264FileSubsession> h264_file(
-        new muduo_media::H264FileSubsession("test.h264"));
+        new muduo_media::H264FileSubsession("10.h264"));
     std::shared_ptr<muduo_media::MediaSubsession> h264_subsession =
         std::static_pointer_cast<muduo_media::MediaSubsession>(h264_file);
     session->AddSubsession(h264_subsession);
