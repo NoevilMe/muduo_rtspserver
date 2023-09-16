@@ -1,6 +1,6 @@
 #include "rtsp_message.h"
 
-namespace rtsp {
+namespace muduo_media {
 
 struct RtspLabel {
     int value;

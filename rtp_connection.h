@@ -5,7 +5,7 @@
 
 #include <memory>
 
-namespace rtsp {
+namespace muduo_media {
 
 class RtpConnection {
 public:
@@ -42,6 +42,6 @@ public:
     ~RtpTcpConnection();
 };
 
-} // namespace rtsp
+} // namespace muduo_media
 
 #endif /* C3EA578B_21D5_4EEA_A7F0_1244C148C6AA */

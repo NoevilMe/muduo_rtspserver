@@ -3,7 +3,7 @@
 
 #include <string>
 
-namespace rtsp {
+namespace muduo_media {
 
 /// https://www.ietf.org/rfc/rfc2326.txt
 

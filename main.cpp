@@ -12,14 +12,14 @@ int main() {
 
     muduo::event_loop::EventLoop loop;
 
-    rtsp::RtspServer rtsp_server(&loop, listen_addr, "RtspServer", true);
+    muduo_media::RtspServer rtsp_server(&loop, listen_addr, "RtspServer", true);
 
-    rtsp::MediaSessionPtr session(new rtsp::MediaSession("live"));
+    muduo_media::MediaSessionPtr session(new muduo_media::MediaSession("live"));
 
-    std::shared_ptr<rtsp::H264FileSubsession> h264_file(
-        new rtsp::H264FileSubsession);
-    std::shared_ptr<rtsp::MediaSubsession> h264_subsession =
-        std::static_pointer_cast<rtsp::MediaSubsession>(h264_file);
+    std::shared_ptr<muduo_media::H264FileSubsession> h264_file(
+        new muduo_media::H264FileSubsession("10.h264"));
+    std::shared_ptr<muduo_media::MediaSubsession> h264_subsession =
+        std::static_pointer_cast<muduo_media::MediaSubsession>(h264_file);
     session->AddSubsession(h264_subsession);
 
     rtsp_server.AddMediaSession(session);

@@ -6,7 +6,7 @@
 #include "net/tcp_server.h"
 #include "rtsp_connection.h"
 
-namespace rtsp {
+namespace muduo_media {
 
 class RtspServer {
 public:
@@ -23,7 +23,7 @@ private:
     void OnBeforeReading(const muduo::net::TcpConnectionPtr &conn);
     void OnConnection(const muduo::net::TcpConnectionPtr &conn);
 
-    MediaSessionPtr OnGetMediaSession(const std::string &path);
+    MediaSessionPtr OnGetMediaSession(const std::string &name);
 
 private:
     muduo::net::TcpServer tcp_server_;

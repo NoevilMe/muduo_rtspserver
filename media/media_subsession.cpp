@@ -1,12 +1,12 @@
 #include "media_subsession.h"
 
-namespace rtsp {
+namespace muduo_media {
 MediaSubsession::MediaSubsession() {}
 
 MediaSubsession::~MediaSubsession() {}
 
-std::string MediaSubsession::TrackId(uint track_id) {
-    return std::string("track").append(std::to_string(track_id));
+std::string MediaSubsession::TrackId() {
+    return std::string("track").append(std::to_string(track_id_));
 }
 
-} // namespace rtsp
+} // namespace muduo_media

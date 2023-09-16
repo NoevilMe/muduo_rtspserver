@@ -3,7 +3,7 @@
 
 #include <random>
 
-namespace rtsp {
+namespace muduo_media {
 RtpUdpConnection::RtpUdpConnection(unsigned short peer_rtp_port,
                                    unsigned short peer_rtcp_port)
     : peer_rtp_port_(peer_rtp_port), peer_rtcp_port_(peer_rtcp_port) {}

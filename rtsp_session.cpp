@@ -1,20 +1,23 @@
 #include "rtsp_session.h"
 #include "logger/logger.h"
 #include "rtp_connection.h"
+#include "rtsp_stream_state.h"
 
 #include <random>
 
-namespace rtsp {
-
-RtspSession::RtspSession(muduo::event_loop::EventLoop *loop)
-    : loop_(loop), id_(-1) {}
+namespace muduo_media {
+RtspSession::RtspSession(muduo::event_loop::EventLoop *loop,
+                         const std::weak_ptr<MediaSession> &media_session)
+    : loop_(loop), media_session_(media_session), id_(-1) {}
 
 RtspSession::~RtspSession() {}
 
-void RtspSession::Setup(const muduo::net::InetAddress &peer_rtp_addr,
+void RtspSession::Setup(const std::string &track,
+                        const muduo::net::InetAddress &peer_rtp_addr,
                         const muduo::net::InetAddress &peer_rtcp_addr,
                         unsigned short &local_rtp_port,
                         unsigned short &local_rtcp_port) {
+
     std::random_device rd;
 
     for (;;) {
@@ -60,6 +63,26 @@ void RtspSession::Setup(const muduo::net::InetAddress &peer_rtp_addr,
         id_ = rd() & 0xffffff;
         break;
     }
+
+    auto valid_media_session = media_session_.lock();
+
+    MediaSubsessionPtr subsession = valid_media_session->GetSubsession(track);
+
+    RtpSinkPtr rtp_sink = subsession->NewRtpSink(rtp_conn_);
+    MultiFrameSourcePtr frame_source = subsession->NewMultiFrameSouce();
+
+    StreamStatePtr state = std::make_shared<RtspStreamState>(
+        loop_, subsession, rtp_sink, frame_source);
+
+    states_.insert(std::make_pair(track, state));
 }
 
-} // namespace rtsp
+void RtspSession::Play() {
+    for (auto &&i : states_) {
+        i.second->Play();
+    }
+}
+
+void RtspSession::Teardown() {}
+
+} // namespace muduo_media

@@ -4,7 +4,7 @@
 #include "net/inet_address.h"
 #include "net/tcp_connection.h"
 
-namespace rtsp {
+namespace muduo_media {
 
 RtspServer::RtspServer(muduo::event_loop::EventLoop *loop,
                        const muduo::net::InetAddress &listen_addr,
@@ -27,18 +27,17 @@ RtspServer::~RtspServer() {}
 void RtspServer::Start() { tcp_server_.Start(); }
 
 void RtspServer::AddMediaSession(const MediaSessionPtr &session) {
-    sessions_.insert(std::make_pair(session->path(), session));
-    LOG_INFO << "added session " << session->path();
+    sessions_.insert(std::make_pair(session->name(), session));
+    LOG_INFO << "added session " << session->name();
 }
 
 void RtspServer::OnBeforeReading(const muduo::net::TcpConnectionPtr &conn) {
     assert(conn->Connected());
 
     LOG_INFO << "connected " << conn->peer_addr().IpPort();
-    RtspConnectionPtr rtsp_conn(new RtspConnection(conn));
-
-    rtsp_conn->set_get_media_session_callback(
-        std::bind(&RtspServer::OnGetMediaSession, this, std::placeholders::_1));
+    RtspConnectionPtr rtsp_conn(
+        new RtspConnection(conn, std::bind(&RtspServer::OnGetMediaSession, this,
+                                           std::placeholders::_1)));
     connections_[conn->name()] = rtsp_conn;
 }
 
@@ -51,8 +50,8 @@ void RtspServer::OnConnection(const muduo::net::TcpConnectionPtr &conn) {
     }
 }
 
-MediaSessionPtr RtspServer::OnGetMediaSession(const std::string &path) {
-    auto it = sessions_.find(path);
+MediaSessionPtr RtspServer::OnGetMediaSession(const std::string &name) {
+    auto it = sessions_.find(name);
     if (it == sessions_.end()) {
         return nullptr;
     } else {
@@ -60,4 +59,4 @@ MediaSessionPtr RtspServer::OnGetMediaSession(const std::string &path) {
     }
 }
 
-} // namespace rtsp
+} // namespace muduo_media
