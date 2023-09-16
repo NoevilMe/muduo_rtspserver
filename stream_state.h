@@ -17,6 +17,7 @@ public:
     size_t play_packets() const { return play_packets_; }
 
     virtual void Play() = 0;
+    virtual void Teardown() = 0;
 
 protected:
     muduo::event_loop::EventLoop *loop_;

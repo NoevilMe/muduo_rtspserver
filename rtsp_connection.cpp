@@ -77,6 +77,8 @@ void RtspConnection::OnMessage(const muduo::net::TcpConnectionPtr conn,
         HandleMethodSetup(buf, header);
     } else if (header->method == RtspMethod::PLAY) {
         HandleMethodPlay(buf, header);
+    } else if (header->method == RtspMethod::TEARDOWN) {
+        HandleMethodTeardown(buf, header);
     } else {
         LOG_ERROR << "unhandled method " << header->method;
     }
@@ -403,6 +405,13 @@ void RtspConnection::HandleMethodPlay(
 void RtspConnection::HandleMethodTeardown(
     muduo::net::Buffer *buf, const std::shared_ptr<RtspRequestHead> &header) {
     rtsp_session_->Teardown();
+    rtsp_session_.reset();
+
+    RtspResponseHead resp_header;
+    resp_header.version = header->version;
+    resp_header.cseq = header->cseq;
+    resp_header.code = RtspStatusCode::OK;
+    SendShortResponse(resp_header);
 }
 
 std::string RtspConnection::ShortResponseMessage(const std::string &version,
@@ -428,7 +437,7 @@ void RtspConnection::SendShortResponse(const std::string &version,
                  "CSeq: %d\r\n"
                  "\r\n",
                  version.data(), (int)code, RtspStatusCodeToString(code), cseq);
-    tcp_conn_->Send(buf, size);
+    SendResponse(buf, size);
 }
 
 void RtspConnection::SendShortResponse(const RtspResponseHead &resp_header) {

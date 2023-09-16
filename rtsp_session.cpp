@@ -88,6 +88,11 @@ void RtspSession::Play() {
     }
 }
 
-void RtspSession::Teardown() {}
+void RtspSession::Teardown() {
+    for (auto &&i : states_) {
+        i.second->Teardown();
+    }
+    // TODO: release session
+}
 
 } // namespace muduo_media

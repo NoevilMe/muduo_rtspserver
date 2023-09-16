@@ -17,6 +17,7 @@ public:
     ~RtspStreamState();
 
     virtual void Play() override;
+    virtual void Teardown() override;
 
 private:
     void PlayOnce();

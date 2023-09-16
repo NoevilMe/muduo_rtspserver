@@ -20,22 +20,35 @@ RtspStreamState::RtspStreamState(muduo::event_loop::EventLoop *loop,
 
     init_seq_ = rd() & 0xFF; // limited
     ssrc_ = rd();
+
+    LOG_DEBUG << "RtspStreamState::ctor at " << this;
 }
 
 RtspStreamState::~RtspStreamState() {
+    LOG_DEBUG << "RtspStreamState::dtor at " << this;
+    // reset members, they could be used in timer function object
     frame_source_.reset();
     media_subsession_.reset();
     rtp_sink_.reset();
+    playing_ = false;
 }
 
 void RtspStreamState::Play() {
+    playing_ = true;
     loop_->QueueInLoop(std::bind(&RtspStreamState::PlayOnce, this));
 }
 
-void RtspStreamState::PlayOnce() {
+void RtspStreamState::Teardown() { playing_ = false; }
 
-    // In timer, this object may not exist
+void RtspStreamState::PlayOnce() {
+    if (!playing_) {
+        LOG_DEBUG << "not playing at " << this;
+        return;
+    }
+
+    // IMPORTANT!!! In timer, this object might be released.
     if (!frame_source_) {
+        LOG_WARN << "PlayOnce cancel at " << this;
         return;
     }
 
