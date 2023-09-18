@@ -72,8 +72,7 @@ void RtspStreamState::PlayOnce() {
         rtp_header->csrcLen = 0;
         rtp_header->marker = 1; //  最后一帧
         rtp_header->payloadType = RTP_PAYLOAD_TYPE_H264;
-        rtp_header->seq =
-            muduo::HostToNetwork16(init_seq_++); // 随机初值，自动增长 htons()
+        rtp_header->seq = 0; // rtp sink will modify this value
         rtp_header->timestamp = muduo::HostToNetwork32(
             frame_packet.timestamp); //需要根据源计算 htonl()
         rtp_header->ssrc = muduo::HostToNetwork32(ssrc_); // 信号源id

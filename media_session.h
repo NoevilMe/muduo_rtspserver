@@ -23,6 +23,8 @@ public:
 
     bool SubsessionExists(const std::string &track);
 
+    std::string GetMethodsAsString();
+
     std::string BuildSdp();
 
     void Play(muduo::event_loop::EventLoop *loop, unsigned int rtsp_session_id,

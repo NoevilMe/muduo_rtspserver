@@ -3,15 +3,15 @@
 
 namespace muduo_media {
 
-constexpr auto kRtpMediaProtoUdp = "RTP/AVP";
+constexpr auto kRtpTransportProtocolUdp = "RTP/AVP";
+constexpr auto kRtpTransportProtocolUdpFull = "RTP/AVP/UDP";
+constexpr auto kRtpTransportProtocolTcp = "RTP/AVP/TCP";
 
 constexpr auto kRtpUnicast = "unicast";
 
-typedef enum StreamingMode {
-  RTP_UDP,
-  RTP_TCP,
-  RAW_UDP
-} StreamingMode;
+enum class RtpTransportProtocol { kRtpOverUdp, kRtpOverTcp };
+
+constexpr auto kRtspApplicationSdp = "application/sdp";
 
 } // namespace muduo_media
 

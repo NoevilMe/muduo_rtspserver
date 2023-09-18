@@ -30,6 +30,11 @@ bool MediaSession::SubsessionExists(const std::string &track) {
     return subsessions_.find(track) != subsessions_.end();
 }
 
+std::string MediaSession::GetMethodsAsString() {
+    std::string methods("OPTIONS, DESCRIBE, SETUP, TRARDOWN, PLAY");
+    return methods;
+}
+
 std::string MediaSession::BuildSdp() {
 
     // TODO:
@@ -63,7 +68,8 @@ void MediaSession::PlayReadFrame(std::shared_ptr<MediaSubsession> subsession) {
 
     // bool end_of_frame = false;
     // int frame_size =
-    //     subsession->ReadFrame((char *)frame_buf.get(), buf_size, &end_of_frame);
+    //     subsession->ReadFrame((char *)frame_buf.get(), buf_size,
+    //     &end_of_frame);
     // if (frame_size > 0) {
     //     AVPacket videoFrame = {0};
     //     videoFrame.type = 0;

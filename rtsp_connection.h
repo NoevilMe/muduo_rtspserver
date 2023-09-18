@@ -28,26 +28,24 @@ private:
     ParseRequestHead(muduo::net::Buffer *buf,
                      std::vector<std::string> &gap_lines);
 
-    bool ParseCSeq(muduo::net::Buffer *buf, int &seq);
-
     void DiscardAllData(muduo::net::Buffer *buf);
 
     void HandleMethodOptions(muduo::net::Buffer *buf,
-                             const std::shared_ptr<RtspRequestHead> &header);
+                             const std::shared_ptr<RtspRequestHead> &head);
 
     void HandleMethodDescribe(muduo::net::Buffer *buf,
-                              const std::shared_ptr<RtspRequestHead> &header,
+                              const std::shared_ptr<RtspRequestHead> &head,
                               const std::vector<std::string> &gap_lines);
 
     void HandleMethodSetup(muduo::net::Buffer *buf,
-                           const std::shared_ptr<RtspRequestHead> &header,
+                           const std::shared_ptr<RtspRequestHead> &head,
                            const std::vector<std::string> &gap_lines);
 
     void HandleMethodPlay(muduo::net::Buffer *buf,
-                          const std::shared_ptr<RtspRequestHead> &header);
+                          const std::shared_ptr<RtspRequestHead> &head);
 
     void HandleMethodTeardown(muduo::net::Buffer *buf,
-                              const std::shared_ptr<RtspRequestHead> &header);
+                              const std::shared_ptr<RtspRequestHead> &head);
 
     std::string ShortResponseMessage(const std::string &version,
                                      RtspStatusCode code, int cseq);

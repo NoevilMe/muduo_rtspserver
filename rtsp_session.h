@@ -37,9 +37,9 @@ private:
     std::shared_ptr<muduo::net::UdpVirtualConnection> rtcp_conn_;
 
     std::map<std::string, StreamStatePtr> states_;
-
-    // std::vector<
 };
+
+using RtspSessionPtr = std::shared_ptr<RtspSession>;
 
 } // namespace muduo_media
 

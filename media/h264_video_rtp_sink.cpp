@@ -11,6 +11,8 @@ H264VideoRtpSink::H264VideoRtpSink(
     const std::shared_ptr<muduo::net::UdpVirtualConnection> &udp_conn)
     : udp_conn_(udp_conn) {
 
+    // udp_conn_->SetSendBufSize(128 * 1024);
+
     std::random_device rd;
     init_seq_ = rd() & 0xFF; // limited
     LOG_DEBUG << "H264VideoRtpSink::ctor at " << this;
@@ -25,8 +27,8 @@ void H264VideoRtpSink::Send(const unsigned char *data, int len,
 
     RtpHeader *header = (RtpHeader *)add_data.get();
 
-    // if (len <= RTP_MAX_PAYLOAD_SIZE) {
-    if (true) {
+    if (len <= RTP_MAX_PAYLOAD_SIZE) {
+        // if (true) {
         /*
          *   0 1 2 3 4 5 6 7 8 9
          *  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
@@ -37,11 +39,13 @@ void H264VideoRtpSink::Send(const unsigned char *data, int len,
         std::unique_ptr<unsigned char[]> new_buf(
             new unsigned char[RTP_HEADER_SIZE + len]);
 
+        LOG_TRACE << "send seq " << init_seq_;
         header->seq = muduo::HostToNetwork16(init_seq_++); // 随机初值，自动增长
         memcpy(new_buf.get(), header, RTP_HEADER_SIZE);
         memcpy(new_buf.get() + RTP_HEADER_SIZE, data, len);
 
         udp_conn_->Send(new_buf.get(), RTP_HEADER_SIZE + len);
+
     } else {
         //分片打包的话，那么在RTP载荷开始有两个字节的信息，然后再是NALU的内容
         /*
@@ -59,6 +63,9 @@ void H264VideoRtpSink::Send(const unsigned char *data, int len,
          *   +---------------+
          *
          * 前三个bit位就是NALU头的前面三个bit位；后五位的TYPE就是NALU的FU-A类型28
+         * 1. 装载FU payload部分时候，需要去掉nalu的header（第一个字节）
+         * 2. 一般I帧前面发送sps和pps，时间戳和I帧相同
+         * 3. h264的采样率固定是9000hz
          */
 
         /*
@@ -89,6 +96,7 @@ void H264VideoRtpSink::Send(const unsigned char *data, int len,
             std::unique_ptr<unsigned char[]> new_buf(
                 new unsigned char[RTP_HEADER_SIZE + RTP_MAX_PAYLOAD_SIZE]);
 
+            LOG_TRACE << "send seq " << init_seq_;
             header->marker = 0;
             header->seq =
                 muduo::HostToNetwork16(init_seq_++); // 随机初值，自动增长
@@ -113,6 +121,7 @@ void H264VideoRtpSink::Send(const unsigned char *data, int len,
             new unsigned char[RTP_HEADER_SIZE + RTP_FU_A_HEAD_LEN + data_len]);
 
         header->marker = 1;
+        LOG_TRACE << "send seq " << init_seq_;
         header->seq = muduo::HostToNetwork16(init_seq_++); // 随机初值，自动增长
         memcpy(new_buf.get(), header, RTP_HEADER_SIZE);
         memcpy(new_buf.get() + RTP_HEADER_SIZE, &FU_A, RTP_FU_A_HEAD_LEN);

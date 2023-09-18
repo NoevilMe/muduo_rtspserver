@@ -4,6 +4,7 @@
 #include "media_session.h"
 #include "net/tcp_connection.h"
 #include "rtsp_session.h"
+#include "rtsp_type.h"
 #include "utils.h"
 
 namespace muduo_media {
@@ -20,10 +21,9 @@ static const char kRtspCSeq[] = "CSeq:";
 static constexpr size_t kRtspCSeqLen = 5;
 static_assert(strlen(kRtspCSeq) == kRtspCSeqLen);
 
-static const char kRtspApplicationSdp[] = "application/sdp";
-
 static constexpr int kRtspPort = 554;
 
+/************************ logger helper ***************************/
 inline muduo::log::LogStream &operator<<(muduo::log::LogStream &s,
                                          RtspStatusCode code) {
     std::string code_str(RtspStatusCodeToString(code));
@@ -38,6 +38,7 @@ inline muduo::log::LogStream &operator<<(muduo::log::LogStream &s,
     return s;
 }
 
+/*=====================================================================*/
 RtspConnection::RtspConnection(const muduo::net::TcpConnectionPtr &conn,
                                const GetMediaSessionCallback &cb)
     : tcp_conn_(conn), get_media_session_callback_(cb) {
@@ -54,7 +55,7 @@ RtspConnection::~RtspConnection() {
     LOG_DEBUG << "RtspConnection::dtor[" << tcp_conn_->name() << "] at "
               << this;
 
-    // tcp_conn_.reset();
+    tcp_conn_.reset();
     rtsp_session_.reset();
 }
 
@@ -65,27 +66,30 @@ void RtspConnection::OnMessage(const muduo::net::TcpConnectionPtr conn,
     std::string data = buf->TryRetrieveAllAsString();
     LOG_DEBUG << "try receive data [" << data << "]";
 
+    // Request line 与 CSeq之间可能存在数据——ffmpeg请求会有这个问题。
     std::vector<std::string> gap_lines;
 
-    std::shared_ptr<RtspRequestHead> header = ParseRequestHead(buf, gap_lines);
-    if (!header) {
+    std::shared_ptr<RtspRequestHead> request_head =
+        ParseRequestHead(buf, gap_lines);
+
+    if (!request_head) {
         LOG_ERROR << "parse rtsp request header fail";
         conn->Shutdown();
         return;
     }
 
-    if (header->method == RtspMethod::OPTIONS) {
-        HandleMethodOptions(buf, header);
-    } else if (header->method == RtspMethod::DESCRIBE) {
-        HandleMethodDescribe(buf, header, gap_lines);
-    } else if (header->method == RtspMethod::SETUP) {
-        HandleMethodSetup(buf, header, gap_lines);
-    } else if (header->method == RtspMethod::PLAY) {
-        HandleMethodPlay(buf, header);
-    } else if (header->method == RtspMethod::TEARDOWN) {
-        HandleMethodTeardown(buf, header);
+    if (request_head->method == RtspMethod::OPTIONS) {
+        HandleMethodOptions(buf, request_head);
+    } else if (request_head->method == RtspMethod::DESCRIBE) {
+        HandleMethodDescribe(buf, request_head, gap_lines);
+    } else if (request_head->method == RtspMethod::SETUP) {
+        HandleMethodSetup(buf, request_head, gap_lines);
+    } else if (request_head->method == RtspMethod::PLAY) {
+        HandleMethodPlay(buf, request_head);
+    } else if (request_head->method == RtspMethod::TEARDOWN) {
+        HandleMethodTeardown(buf, request_head);
     } else {
-        LOG_ERROR << "unhandled method " << header->method;
+        LOG_ERROR << "unhandled method " << request_head->method;
     }
 
     auto left_data = buf->RetrieveAllAsString();
@@ -123,10 +127,10 @@ RtspConnection::ParseRequestHead(muduo::net::Buffer *buf,
             return nullptr;
         }
 
-        std::shared_ptr<RtspRequestHead> req_header(new RtspRequestHead());
-        req_header->method = rtsp_method;
-        req_header->version.assign(version);
-        req_header->url.entire = url;
+        std::shared_ptr<RtspRequestHead> req_head(new RtspRequestHead());
+        req_head->method = rtsp_method;
+        req_head->version.assign(version);
+        req_head->url.entire = url;
 
         uint16_t port = 0;
         char host[64] = {0};
@@ -134,13 +138,13 @@ RtspConnection::ParseRequestHead(muduo::net::Buffer *buf,
 
         char *s_point = url + strlen(kRtspUrlPrefix);
         if (sscanf(s_point, "%[^:]:%hu/%s", host, &port, suffix) == 3) {
-            req_header->url.host = host;
-            req_header->url.port = port;
-            req_header->url.session = suffix;
+            req_head->url.host = host;
+            req_head->url.port = port;
+            req_head->url.session = suffix;
         } else if (sscanf(s_point, "%[^/]/%s", host, suffix) == 2) {
-            req_header->url.host = host;
-            req_header->url.port = kRtspPort;
-            req_header->url.session = suffix;
+            req_head->url.host = host;
+            req_head->url.port = kRtspPort;
+            req_head->url.session = suffix;
             port = 554;
         } else {
             LOG_ERROR << "analyze rtsp " << url << " fail ";
@@ -149,17 +153,17 @@ RtspConnection::ParseRequestHead(muduo::net::Buffer *buf,
 
         // 第一行处理完毕
         buf->RetrieveUntil(first_crlf + 2);
-        LOG_INFO << "rtsp method: " << req_header->method
-                 << ", version: " << req_header->version
-                 << ", url: " << req_header->url.entire
-                 << " (host: " << req_header->url.host
-                 << ", port:" << req_header->url.port
-                 << ", session: " << req_header->url.session << ")";
+        LOG_INFO << "rtsp method: " << req_head->method
+                 << ", version: " << req_head->version
+                 << ", url: " << req_head->url.entire
+                 << " (host: " << req_head->url.host
+                 << ", port:" << req_head->url.port
+                 << ", session: " << req_head->url.session << ")";
 
         std::string line;
         while (buf->RetrieveCRLFLine(false, line)) {
             if (utils::StartsWith(line, kRtspCSeq)) {
-                sscanf(line.data(), "%*[^:]: %d", &req_header->cseq);
+                sscanf(line.data(), "%*[^:]: %d", &req_head->cseq);
                 break;
             } else {
                 gap_lines.push_back(line);
@@ -167,77 +171,62 @@ RtspConnection::ParseRequestHead(muduo::net::Buffer *buf,
             }
         }
 
-        if (req_header->cseq == 0) {
+        if (req_head->cseq == 0) {
             LOG_ERROR << "parse CSeq fail";
             return nullptr;
         } else {
-            LOG_INFO << "CSeq: " << req_header->cseq;
-            return req_header;
+            LOG_INFO << "CSeq: " << req_head->cseq;
+            return req_head;
         }
     } else {
         return nullptr;
     }
 }
 
-bool RtspConnection::ParseCSeq(muduo::net::Buffer *buf, int &cseq) {
-    const char *first_crlf = buf->FindCRLF();
-    if (first_crlf) {
-        std::string line(buf->Peek(), first_crlf);
-        buf->RetrieveUntil(first_crlf + 2);
-
-        auto pos = line.find(kRtspCSeq);
-        if (pos == std::string ::npos) {
-            return false;
-        }
-
-        return sscanf(line.data() + pos, "%*[^:]: %d", &cseq) == 1;
-    } else {
-        return false;
-    }
-}
-
 void RtspConnection::DiscardAllData(muduo::net::Buffer *buf) {
-    LOG_DEBUG << "discard left data: " << buf->RetrieveAllAsString();
+    auto left_data = buf->RetrieveAllAsString();
+    LOG_DEBUG << "discard left data: " << left_data;
 }
 
 void RtspConnection::HandleMethodOptions(
-    muduo::net::Buffer *buf, const std::shared_ptr<RtspRequestHead> &header) {
+    muduo::net::Buffer *buf, const std::shared_ptr<RtspRequestHead> &head) {
 
-    RtspResponseHead resp_header;
-    resp_header.version = header->version;
-    resp_header.cseq = header->cseq;
+    RtspResponseHead resp_head;
+    resp_head.version = head->version;
+    resp_head.cseq = head->cseq;
 
-    auto session = get_media_session_callback_(header->url.session);
+    auto session = get_media_session_callback_(head->url.session);
     if (session) {
         active_media_session_ = session;
         media_session_name_ = session->name();
 
-        resp_header.code = RtspStatusCode::OK;
+        resp_head.code = RtspStatusCode::OK;
 
         char send_buf[200] = {0};
-        int data_size = snprintf(
-            send_buf, sizeof(send_buf),
-            "%s %d %s\r\n"
-            "CSeq: %d\r\n"
-            "Public: OPTIONS, DESCRIBE, SETUP, TRARDOWN, PLAY\r\n"
-            "\r\n",
-            resp_header.version.data(), (int)resp_header.code,
-            RtspStatusCodeToString(resp_header.code), resp_header.cseq);
+        int data_size =
+            snprintf(send_buf, sizeof(send_buf),
+                     "%s %d %s\r\n"
+                     "CSeq: %d\r\n"
+                     "Public: %s\r\n"
+                     "\r\n",
+                     resp_head.version.data(), (int)resp_head.code,
+                     RtspStatusCodeToString(resp_head.code), resp_head.cseq,
+                     session->GetMethodsAsString().data());
 
         SendResponse(send_buf, data_size);
     } else {
-        resp_header.code = RtspStatusCode::NotAcceptable;
-        SendShortResponse(resp_header);
+        resp_head.code = RtspStatusCode::NotAcceptable;
+        SendShortResponse(resp_head);
     }
 }
 
 void RtspConnection::HandleMethodDescribe(
-    muduo::net::Buffer *buf, const std::shared_ptr<RtspRequestHead> &header,
+    muduo::net::Buffer *buf, const std::shared_ptr<RtspRequestHead> &head,
     const std::vector<std::string> &gap_lines) {
 
     // 如果没有执行OPTIONS
     if (active_media_session_.expired()) {
-        auto session = get_media_session_callback_(header->url.session);
+        auto session = get_media_session_callback_(head->url.session);
         if (session) {
             active_media_session_ = session;
             media_session_name_ = session->name();
@@ -245,88 +234,89 @@ void RtspConnection::HandleMethodDescribe(
     }
 
     std::string accept_application_type;
-    for (auto &&line : gap_lines) {
-        if (utils::StartsWith(line, "Accept: ")) {
-            accept_application_type = line.substr(strlen("Accept: "));
-            LOG_DEBUG << "accept type " << accept_application_type;
-        }
-    }
 
-    std::string line;
-    while (buf->RetrieveCRLFLine(false, line)) {
-        // LOG_DEBUG << "line data: " << line << " length " <<
-        // line.length();
-
+    auto line_handler([&, this](const std::string &line) {
         if (utils::StartsWith(line, "Accept: ")) {
             accept_application_type = line.substr(strlen("Accept: "));
             LOG_DEBUG << "accept type " << accept_application_type;
         } else if (utils::StartsWith(line, "User-Agent: ")) {
             LOG_DEBUG << "agent " << line.substr(strlen("User-Agent: "));
         }
+    });
+
+    for (auto &&line : gap_lines) {
+        line_handler(line);
     }
 
-    RtspResponseHead resp_header;
-    resp_header.version = header->version;
-    resp_header.cseq = header->cseq;
+    std::string line;
+    while (buf->RetrieveCRLFLine(false, line)) {
+        line_handler(line);
+    }
 
-    if (accept_application_type != "application/sdp") {
-        resp_header.code = RtspStatusCode::UnsupportedMediaType;
-        SendShortResponse(resp_header);
+    RtspResponseHead resp_head;
+    resp_head.version = head->version;
+    resp_head.cseq = head->cseq;
+
+    if (accept_application_type != kRtspApplicationSdp) {
+        resp_head.code = RtspStatusCode::UnsupportedMediaType;
+        SendShortResponse(resp_head);
     } else {
         MediaSessionPtr session = active_media_session_.lock();
         if (!session) {
-            resp_header.code = RtspStatusCode::NotAcceptable;
-            SendShortResponse(resp_header);
+            resp_head.code = RtspStatusCode::NotAcceptable;
+            SendShortResponse(resp_head);
         } else {
-            resp_header.code = RtspStatusCode::OK;
+            resp_head.code = RtspStatusCode::OK;
             std::string sdp = session->BuildSdp();
-            char data_buf[1000] = {0};
+
+            size_t buf_len = sdp.length() + 100;
+            std::unique_ptr<char[]> databuf(new char[buf_len]);
             int data_size =
-                snprintf(data_buf, sizeof(data_buf),
+                snprintf(databuf.get(), buf_len,
                          "%s %d %s\r\n"
                          "CSeq: %d\r\n"
                          "Content-Length: %lu\r\n"
                          "Content-Type: application/sdp\r\n"
                          "\r\n"
                          "%s",
-                         resp_header.version.data(), (int)resp_header.code,
-                         RtspStatusCodeToString(resp_header.code),
-                         resp_header.cseq, sdp.length(), sdp.data());
+                         resp_head.version.data(), (int)resp_head.code,
+                         RtspStatusCodeToString(resp_head.code), resp_head.cseq,
+                         sdp.length(), sdp.data());
 
-            SendResponse(data_buf, data_size);
+            SendResponse(databuf.get(), data_size);
         }
     }
 }
 
 void RtspConnection::HandleMethodSetup(
-    muduo::net::Buffer *buf, const std::shared_ptr<RtspRequestHead> &header,
+    muduo::net::Buffer *buf, const std::shared_ptr<RtspRequestHead> &head,
     const std::vector<std::string> &gap_lines) {
 
-    RtspResponseHead resp_header;
-    resp_header.version = header->version;
-    resp_header.cseq = header->cseq;
-    resp_header.code = RtspStatusCode::OK;
+    RtspResponseHead resp_head;
+    resp_head.version = head->version;
+    resp_head.cseq = head->cseq;
+    resp_head.code = RtspStatusCode::OK;
 
     // TODO: 如果没有OPTIONS、DESCRIBE，直接SETUP
     assert(!media_session_name_.empty());
     std::string session_head = media_session_name_ + "/";
-    assert(utils::StartsWith(header->url.session, session_head));
+    assert(utils::StartsWith(head->url.session, session_head));
 
-    std::string track = header->url.session.substr(session_head.size());
+    std::string track = head->url.session.substr(session_head.size());
     LOG_DEBUG << "session track " << track;
 
     auto media_session = active_media_session_.lock();
     if (!media_session) {
         LOG_ERROR << "media session is null";
-        resp_header.code = RtspStatusCode::NotFound;
-        SendShortResponse(resp_header);
+        resp_head.code = RtspStatusCode::NotFound;
+        SendShortResponse(resp_head);
         return;
     }
 
     if (!media_session->SubsessionExists(track)) {
         LOG_ERROR << "can not find subsession " << track;
-        resp_header.code = RtspStatusCode::NotFound;
-        SendShortResponse(resp_header);
+        resp_head.code = RtspStatusCode::NotFound;
+        SendShortResponse(resp_head);
         return;
     }
 
@@ -378,9 +368,9 @@ void RtspConnection::HandleMethodSetup(
                              "Transport: %s;server_port=%hu-%hu\r\n"
                              "Session: %d\r\n"
                              "\r\n",
-                             resp_header.version.data(), (int)resp_header.code,
-                             RtspStatusCodeToString(resp_header.code),
-                             resp_header.cseq, transport.data(), local_rtp_port,
+                             resp_head.version.data(), (int)resp_head.code,
+                             RtspStatusCodeToString(resp_head.code),
+                             resp_head.cseq, transport.data(), local_rtp_port,
                              local_rtcp_port, session_id);
                 SendResponse(send_buf, size);
             } else {
@@ -405,7 +395,7 @@ void RtspConnection::HandleMethodSetup(
 }
 
 void RtspConnection::HandleMethodPlay(
-    muduo::net::Buffer *buf, const std::shared_ptr<RtspRequestHead> &header) {
+    muduo::net::Buffer *buf, const std::shared_ptr<RtspRequestHead> &head) {
 
     std::string line;
     while (buf->RetrieveCRLFLine(false, line)) {
@@ -417,34 +407,35 @@ void RtspConnection::HandleMethodPlay(
     }
     rtsp_session_->Play();
 
-    RtspResponseHead resp_header;
-    resp_header.version = header->version;
-    resp_header.cseq = header->cseq;
-    resp_header.code = RtspStatusCode::OK;
+    RtspResponseHead resp_head;
+    resp_head.version = head->version;
+    resp_head.cseq = head->cseq;
+    resp_head.code = RtspStatusCode::OK;
 
     char send_buf[300] = {0};
     auto data_len = snprintf(send_buf, sizeof(send_buf),
                              "%s %d %s\r\n"
                              "CSeq: %d\r\n"
                              "Range: npt=0.000-\r\n"
-                             "Session: %d; timeout=60\r\n",
-                             resp_header.version.data(), (int)resp_header.code,
-                             RtspStatusCodeToString(resp_header.code),
-                             resp_header.cseq, rtsp_session_->id());
+                             "Session: %d; timeout=60\r\n"
+                             "\r\n",
+                             resp_head.version.data(), (int)resp_head.code,
+                             RtspStatusCodeToString(resp_head.code),
+                             resp_head.cseq, rtsp_session_->id());
 
     SendResponse(send_buf, data_len);
 }
 
 void RtspConnection::HandleMethodTeardown(
-    muduo::net::Buffer *buf, const std::shared_ptr<RtspRequestHead> &header) {
+    muduo::net::Buffer *buf, const std::shared_ptr<RtspRequestHead> &head) {
     rtsp_session_->Teardown();
     rtsp_session_.reset();
 
-    RtspResponseHead resp_header;
-    resp_header.version = header->version;
-    resp_header.cseq = header->cseq;
-    resp_header.code = RtspStatusCode::OK;
-    SendShortResponse(resp_header);
+    RtspResponseHead resp_head;
+    resp_head.version = head->version;
+    resp_head.cseq = head->cseq;
+    resp_head.code = RtspStatusCode::OK;
+    SendShortResponse(resp_head);
 }
 
 std::string RtspConnection::ShortResponseMessage(const std::string &version,
@@ -473,12 +464,13 @@ void RtspConnection::SendShortResponse(const std::string &version,
     SendResponse(buf, size);
 }
 
-void RtspConnection::SendShortResponse(const RtspResponseHead &resp_header) {
-    SendShortResponse(resp_header.version, resp_header.code, resp_header.cseq);
+void RtspConnection::SendShortResponse(const RtspResponseHead &resp_head) {
+    SendShortResponse(resp_head.version, resp_head.code, resp_head.cseq);
 }
 
 void RtspConnection::SendResponse(const char *buf, int size) {
-    LOG_DEBUG << "size " << size << " -\r\n" << muduo::StringPiece(buf, size);
+    LOG_DEBUG << "size " << size << ", [\r\n"
+              << muduo::StringPiece(buf, size) << "]";
     tcp_conn_->Send(buf, size);
 }
 
