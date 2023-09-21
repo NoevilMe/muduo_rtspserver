@@ -22,6 +22,10 @@ public:
                const muduo::net::InetAddress &peer_rtcp_addr,
                unsigned short &local_rtp_port, unsigned short &local_rtcp_port);
 
+    void Setup(const std::string &track,
+               const muduo::net::TcpConnectionPtr &tcp_conn, int8_t rtp_channel,
+               int8_t rtcp_channel);
+
     int id() const { return id_; }
 
     void Play();
@@ -30,6 +34,8 @@ public:
 private:
     muduo::event_loop::EventLoop *loop_;
     std::weak_ptr<MediaSession> media_session_;
+
+    muduo::net::TcpConnectionPtr tcp_conn_;
 
     int id_;
 

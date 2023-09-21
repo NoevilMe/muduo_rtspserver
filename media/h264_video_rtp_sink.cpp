@@ -6,11 +6,18 @@
 #include <random>
 
 namespace muduo_media {
+H264VideoRtpSink::H264VideoRtpSink(const muduo::net::TcpConnectionPtr &tcp_conn,
+                                   int8_t rtp_channel)
+    : tcp_conn_(tcp_conn), rtp_channel_(rtp_channel), udp_conn_(nullptr) {
+
+    std::random_device rd;
+    init_seq_ = rd() & 0xFF; // limited
+    LOG_DEBUG << "H264VideoRtpSink::ctor at " << this;
+}
 
 H264VideoRtpSink::H264VideoRtpSink(
-    const std::shared_ptr<muduo::net::UdpVirtualConnection> &udp_conn)
-    : udp_conn_(udp_conn) {
-
+    const muduo::net::UdpVirtualConnectionPtr &udp_conn)
+    : tcp_conn_(nullptr), rtp_channel_(-1), udp_conn_(udp_conn) {
     // udp_conn_->SetSendBufSize(128 * 1024);
 
     std::random_device rd;
@@ -24,6 +31,21 @@ H264VideoRtpSink::~H264VideoRtpSink() {
 
 void H264VideoRtpSink::Send(const unsigned char *data, int len,
                             const std::shared_ptr<void> &add_data) {
+
+    if (tcp_conn_) {
+        SendOverTcp(data, len, add_data);
+    } else {
+        SendOverUdp(data, len, add_data);
+    }
+}
+
+void H264VideoRtpSink::SendOverTcp(const unsigned char *data, int len,
+                                   const std::shared_ptr<void> &add_data) {
+    LOG_DEBUG << "send " << init_seq_++;
+}
+
+void H264VideoRtpSink::SendOverUdp(const unsigned char *data, int len,
+                                   const std::shared_ptr<void> &add_data) {
 
     RtpHeader *header = (RtpHeader *)add_data.get();
 

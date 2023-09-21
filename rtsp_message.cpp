@@ -108,6 +108,7 @@ static RtspLabel s_status_code_names[] = {
     {(int)RtspStatusCode::NotAcceptable, "Not Acceptable"},
     {(int)RtspStatusCode::UnsupportedMediaType, "Unsupported Media Type"},
     {(int)RtspStatusCode::SessionNotFound, "Session Not Found"},
+    {(int)RtspStatusCode::UnsupportedTransport, "Unsupported transport"},
     {(int)RtspStatusCode::None, nullptr}};
 
 const char *RtspStatusCodeToString(RtspStatusCode code) {
@@ -122,4 +123,4 @@ const char *RtspStatusCodeToString(RtspStatusCode code) {
     return "";
 }
 
-} // namespace rtsp
+} // namespace muduo_media

@@ -13,6 +13,10 @@ public:
 
     std::string GetSdp() override;
 
+    RtpSinkPtr
+    NewRtpSink(const std::shared_ptr<muduo::net::TcpConnection> &tcp_conn,
+               int8_t rtp_channel) override;
+
     RtpSinkPtr NewRtpSink(
         const std::shared_ptr<muduo::net::UdpVirtualConnection> &udp_conn)
         override;

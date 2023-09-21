@@ -4,6 +4,7 @@
 #include "eventloop/event_loop.h"
 #include "net/callback.h"
 #include "rtsp_message.h"
+#include "rtsp_type.h"
 
 namespace muduo_media {
 
@@ -65,6 +66,8 @@ private:
     std::string media_session_name_;
 
     std::shared_ptr<RtspSession> rtsp_session_;
+
+    RtpTransportProtocol rtp_transport_;
 };
 
 using RtspConnectionPtr = std::shared_ptr<RtspConnection>;

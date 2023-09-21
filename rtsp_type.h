@@ -9,7 +9,12 @@ constexpr auto kRtpTransportProtocolTcp = "RTP/AVP/TCP";
 
 constexpr auto kRtpUnicast = "unicast";
 
-enum class RtpTransportProtocol { kRtpOverUdp, kRtpOverTcp };
+enum class RtpTransportProtocol {
+    kRtpTransportNone = 0,
+    kRtpOverTcp = 1,
+    kRtpOverUdp = 2,
+    kRtpOverMulticast = 3
+};
 
 constexpr auto kRtspApplicationSdp = "application/sdp";
 

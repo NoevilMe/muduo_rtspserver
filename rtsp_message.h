@@ -57,7 +57,8 @@ enum class RtspStatusCode {
     MethodNotAllowed = 405,
     NotAcceptable = 406,
     UnsupportedMediaType = 415,
-    SessionNotFound = 454
+    SessionNotFound = 454,
+    UnsupportedTransport = 461
 }; // https://www.websitepulse.com/kb/rtsp_status_codes
 
 const char *RtspStatusCodeToString(RtspStatusCode code);
@@ -71,6 +72,6 @@ struct RtspResponseHead : public RtspStatusLine {
     int cseq = 0;
 };
 
-} // namespace rtsp
+} // namespace muduo_media
 
 #endif /* A2B03B7D_F0DE_4FAF_BE57_751F96E7384B */

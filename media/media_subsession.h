@@ -9,7 +9,8 @@
 namespace muduo {
 namespace net {
 class UdpVirtualConnection;
-}
+class TcpConnection;
+} // namespace net
 } // namespace muduo
 
 namespace muduo_media {
@@ -25,6 +26,10 @@ public:
     void set_track_id(unsigned int id) { track_id_ = id; }
 
     virtual std::string GetSdp() = 0;
+
+    virtual RtpSinkPtr
+    NewRtpSink(const std::shared_ptr<muduo::net::TcpConnection> &tcp_conn,
+               int8_t rtp_channel) = 0;
 
     virtual RtpSinkPtr NewRtpSink(
         const std::shared_ptr<muduo::net::UdpVirtualConnection> &udp_conn) = 0;

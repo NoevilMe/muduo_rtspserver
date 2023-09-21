@@ -5,6 +5,25 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "(gdb) Launch test_timer",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/tinymuduo/build/test_timer",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/tinymuduo/build/",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ]
+        },
+        {
             "name": "(gdb) Launch test_udp_server",
             "type": "cppdbg",
             "request": "launch",

@@ -30,7 +30,6 @@ set(MUDUO_MEDIA_SRC
     utils.cpp
     media_session.cpp
     rtsp_session.cpp
-    rtp_connection.cpp
     stream_state.cpp
     rtsp_stream_state.cpp)
 

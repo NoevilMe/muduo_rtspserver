@@ -4,7 +4,7 @@
 #include "media_session.h"
 #include "net/tcp_connection.h"
 #include "rtsp_session.h"
-#include "rtsp_type.h"
+
 #include "utils.h"
 
 namespace muduo_media {
@@ -41,7 +41,10 @@ inline muduo::log::LogStream &operator<<(muduo::log::LogStream &s,
 /*=====================================================================*/
 RtspConnection::RtspConnection(const muduo::net::TcpConnectionPtr &conn,
                                const GetMediaSessionCallback &cb)
-    : tcp_conn_(conn), get_media_session_callback_(cb) {
+    : tcp_conn_(conn),
+      get_media_session_callback_(cb),
+      rtp_transport_(RtpTransportProtocol::kRtpTransportNone) {
+
     // 消息回调最迟要在tcp connection before_reading_callback 中来设置
     tcp_conn_->set_message_callback(
         std::bind(&RtspConnection::OnMessage, this, std::placeholders::_1,
@@ -320,63 +323,11 @@ void RtspConnection::HandleMethodSetup(
         return;
     }
 
-    unsigned short rtp_port = 0;
-    unsigned short rtcp_port = 0;
+    std::string transport;
 
     auto line_handler([&, this](const std::string &line) {
         if (utils::StartsWith(line, "Transport: ")) {
-            std::string transport = line.substr(strlen("Transport: "));
-
-            char pro_buf[20] = {0};
-            char cast_buf[20] = {0};
-
-            if (sscanf(transport.data(), "%[^;];%[^;];client_port=%hu-%hu",
-                       pro_buf, cast_buf, &rtp_port, &rtcp_port) == 4) {
-
-                std::string protocol(pro_buf);
-                std::string cast(cast_buf);
-
-                LOG_DEBUG << "transport " << transport << ", media protocol "
-                          << protocol << ", " << cast_buf << ", rtp port "
-                          << rtp_port << ", rtcp port " << rtcp_port;
-
-                auto peer_ip = tcp_conn_->peer_addr().Ip();
-                muduo::net::InetAddress peer_rtp_addr(peer_ip, rtp_port);
-                muduo::net::InetAddress peer_rtcp_addr(peer_ip, rtcp_port);
-
-                unsigned short local_rtp_port;
-                unsigned short local_rtcp_port;
-
-                if (!rtsp_session_) {
-                    rtsp_session_.reset(new RtspSession(tcp_conn_->loop(),
-                                                        active_media_session_));
-                }
-
-                rtsp_session_->Setup(track, peer_rtp_addr, peer_rtcp_addr,
-                                     local_rtp_port, local_rtcp_port);
-
-                auto session_id = rtsp_session_->id();
-                LOG_DEBUG << "local rtp port " << local_rtp_port
-                          << ", rtcp port " << local_rtcp_port
-                          << ", session id " << session_id;
-
-                char send_buf[300] = {0};
-                int size =
-                    snprintf(send_buf, sizeof(send_buf),
-                             "%s %d %s\r\n"
-                             "CSeq: %d\r\n"
-                             "Transport: %s;server_port=%hu-%hu\r\n"
-                             "Session: %d\r\n"
-                             "\r\n",
-                             resp_head.version.data(), (int)resp_head.code,
-                             RtspStatusCodeToString(resp_head.code),
-                             resp_head.cseq, transport.data(), local_rtp_port,
-                             local_rtcp_port, session_id);
-                SendResponse(send_buf, size);
-            } else {
-                LOG_ERROR << "unsupported setup params";
-            }
-
+            transport = line.substr(strlen("Transport: "));
         } else if (utils::StartsWith(line, "User-Agent: ")) {
             LOG_DEBUG << "agent " << line.substr(strlen("User-Agent: "));
         }
@@ -391,6 +342,123 @@ void RtspConnection::HandleMethodSetup(
         // LOG_DEBUG << "line data: " << line << " length " <<
         // line.length();
         line_handler(line);
+    }
+
+    if (transport.empty()) {
+        LOG_ERROR << "no transport";
+        resp_head.code = RtspStatusCode::UnsupportedTransport;
+        SendShortResponse(resp_head);
+        return;
+    }
+
+    if (transport.find(kRtpTransportProtocolTcp) != std::string::npos) { // tcp
+
+        char protocol_buf[20] = {0};
+        char cast_buf[20] = {0};
+
+        unsigned short rtp_channel = 0, rtcp_channel = 0;
+        if (sscanf(transport.data(), "%[^;];%[^;];interleaved=%hu-%hu",
+                   protocol_buf, cast_buf, &rtp_channel, &rtcp_channel) != 4) {
+            LOG_ERROR << "unsupported setup params for transport "
+                      << kRtpTransportProtocolTcp;
+
+            resp_head.code = RtspStatusCode::UnsupportedTransport;
+            SendShortResponse(resp_head);
+            return;
+        }
+
+        rtp_transport_ = RtpTransportProtocol::kRtpOverTcp;
+
+        std::string protocol(protocol_buf);
+        std::string cast(cast_buf);
+
+        LOG_DEBUG << "transport " << transport << ", transport protocol "
+                  << protocol << ", " << cast_buf << ", rtp channel "
+                  << rtp_channel << ", rtcp channel " << rtcp_channel;
+
+        if (!rtsp_session_) {
+            rtsp_session_.reset(
+                new RtspSession(tcp_conn_->loop(), active_media_session_));
+        }
+
+        rtsp_session_->Setup(track, tcp_conn_, rtp_channel, rtcp_channel);
+
+        auto session_id = rtsp_session_->id();
+        LOG_DEBUG << "session id " << session_id;
+
+        char send_buf[300] = {0};
+        int size = snprintf(send_buf, sizeof(send_buf),
+                            "%s %d %s\r\n"
+                            "CSeq: %d\r\n"
+                            "Transport: %s\r\n"
+                            "Session: %d\r\n"
+                            "\r\n",
+                            resp_head.version.data(), (int)resp_head.code,
+                            RtspStatusCodeToString(resp_head.code),
+                            resp_head.cseq, transport.data(), session_id);
+        SendResponse(send_buf, size);
+    } else if (transport.find(kRtpTransportProtocolUdp) !=
+               std::string::npos) { // udp
+
+        unsigned short rtp_port = 0;
+        unsigned short rtcp_port = 0;
+        char pro_buf[20] = {0};
+        char cast_buf[20] = {0};
+
+        if (sscanf(transport.data(), "%[^;];%[^;];client_port=%hu-%hu", pro_buf,
+                   cast_buf, &rtp_port, &rtcp_port) != 4) {
+            LOG_ERROR << "unsupported setup params for transport "
+                      << kRtpTransportProtocolUdp;
+            resp_head.code = RtspStatusCode::UnsupportedTransport;
+            SendShortResponse(resp_head);
+            return;
+        }
+
+        rtp_transport_ = RtpTransportProtocol::kRtpOverUdp;
+
+        std::string protocol(pro_buf);
+        std::string cast(cast_buf);
+
+        LOG_DEBUG << "transport " << transport << ", media protocol "
+                  << protocol << ", " << cast_buf << ", rtp port " << rtp_port
+                  << ", rtcp port " << rtcp_port;
+
+        auto peer_ip = tcp_conn_->peer_addr().Ip();
+        muduo::net::InetAddress peer_rtp_addr(peer_ip, rtp_port);
+        muduo::net::InetAddress peer_rtcp_addr(peer_ip, rtcp_port);
+
+        unsigned short local_rtp_port;
+        unsigned short local_rtcp_port;
+
+        if (!rtsp_session_) {
+            rtsp_session_.reset(
+                new RtspSession(tcp_conn_->loop(), active_media_session_));
+        }
+
+        rtsp_session_->Setup(track, peer_rtp_addr, peer_rtcp_addr,
+                             local_rtp_port, local_rtcp_port);
+
+        auto session_id = rtsp_session_->id();
+        LOG_DEBUG << "local rtp port " << local_rtp_port << ", rtcp port "
+                  << local_rtcp_port << ", session id " << session_id;
+
+        char send_buf[300] = {0};
+        int size = snprintf(send_buf, sizeof(send_buf),
+                            "%s %d %s\r\n"
+                            "CSeq: %d\r\n"
+                            "Transport: %s;server_port=%hu-%hu\r\n"
+                            "Session: %d\r\n"
+                            "\r\n",
+                            resp_head.version.data(), (int)resp_head.code,
+                            RtspStatusCodeToString(resp_head.code),
+                            resp_head.cseq, transport.data(), local_rtp_port,
+                            local_rtcp_port, session_id);
+        SendResponse(send_buf, size);
+    } else {
+        LOG_ERROR << "unsupported transport protocol";
+        resp_head.code = RtspStatusCode::UnsupportedTransport;
+        SendShortResponse(resp_head);
+        return;
     }
 }
 
