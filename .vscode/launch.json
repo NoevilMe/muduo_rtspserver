@@ -43,10 +43,10 @@
             ]
         },
         {
-            "name": "(gdb) Launch rtsp_server",
+            "name": "(gdb) Launch muduo_media_server",
             "type": "cppdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/build/rtsp_server",
+            "program": "${workspaceFolder}/build/muduo_media_server",
             "args": [],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}/build/",

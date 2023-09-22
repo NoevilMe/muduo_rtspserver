@@ -1,6 +1,8 @@
 #include "rtsp_connection.h"
+#include "eventloop/endian.h"
 #include "logger/log_stream.h"
 #include "logger/logger.h"
+#include "media/rtcp.h"
 #include "media_session.h"
 #include "net/tcp_connection.h"
 #include "rtsp_session.h"
@@ -43,7 +45,11 @@ RtspConnection::RtspConnection(const muduo::net::TcpConnectionPtr &conn,
                                const GetMediaSessionCallback &cb)
     : tcp_conn_(conn),
       get_media_session_callback_(cb),
-      rtp_transport_(RtpTransportProtocol::kRtpTransportNone) {
+      next_type_(kMessageNone),
+      next_length_(0),
+      rtp_transport_(RtpTransportProtocol::kRtpTransportNone),
+      rtp_channel_(-1),
+      rtcp_channel_(-1) {
 
     // 消息回调最迟要在tcp connection before_reading_callback 中来设置
     tcp_conn_->set_message_callback(
@@ -66,8 +72,57 @@ void RtspConnection::OnMessage(const muduo::net::TcpConnectionPtr conn,
                                muduo::net::Buffer *buf,
                                muduo::event_loop::Timestamp timestamp) {
 
+    LOG_TRACE << "available bytes " << buf->ReadableBytes();
+
     std::string data = buf->TryRetrieveAllAsString();
-    LOG_DEBUG << "try receive data [" << data << "]";
+    LOG_TRACE << "try receive data [" << data << "]";
+
+    auto data_ptr = buf->Peek();
+    if (*data_ptr == kRtspInterleavedFrameMagic) {
+        if (buf->ReadableBytes() < sizeof(RtspInterleavedFrame)) {
+            LOG_ERROR << "RTSP Interleaved Frame packet size must be >="
+                      << sizeof(RtspInterleavedFrame);
+            // 继续接收数据
+            return;
+        } else {
+            LOG_TRACE << "parse RTSP Interleaved Frame";
+            RtspInterleavedFrame rif{0};
+            memcpy(&rif, data_ptr, sizeof(RtspInterleavedFrame));
+            rif.length = muduo::NetworkToHost16(rif.length);
+            LOG_DEBUG << "RTSP Interleaved Frame, magic " << (char)rif.magic
+                      << ", channel " << rif.channel << ", length "
+                      << rif.length;
+
+            if (rif.channel == rtp_channel_) {
+                LOG_DEBUG << "rtp channel " << rif.channel;
+                next_type_ = kMessageRtp;
+            } else if (rif.channel == rtcp_channel_) {
+                LOG_DEBUG << "rtcp channel " << rif.channel;
+                next_type_ = kMessageRtcp;
+                next_length_ = rif.length;
+            }
+            buf->Retrieve(sizeof(RtspInterleavedFrame));
+            return;
+        }
+    } else if (kMessageRtcp == next_type_) {
+        if (buf->ReadableBytes() < next_length_)
+            return;
+
+        LOG_DEBUG << "parse RTCP";
+        RtcpHeader rtcp = {0};
+        memcpy(&rtcp, data_ptr, sizeof(RtcpHeader));
+        rtcp.length = muduo::NetworkToHost16(rtcp.length);
+
+        LOG_DEBUG << "rtcp V " << rtcp.v << ", P " << rtcp.p << ", RC "
+                  << rtcp.rc << ", PT " << rtcp.pt << ", length "
+                  << rtcp.length;
+        // buf->Retrieve(sizeof(RtcpHeader));
+        buf->Retrieve(next_length_);
+        LOG_DEBUG << "RTCP retrieve " << next_length_;
+        next_length_ = 0;
+        next_type_ = kMessageNone;
+        return;
+    }
 
     // Request line 与 CSeq之间可能存在数据——ffmpeg请求会有这个问题。
     std::vector<std::string> gap_lines;
@@ -95,9 +150,11 @@ void RtspConnection::OnMessage(const muduo::net::TcpConnectionPtr conn,
         LOG_ERROR << "unhandled method " << request_head->method;
     }
 
-    auto left_data = buf->RetrieveAllAsString();
-    LOG_DEBUG << conn->peer_addr().IpPort() << " received [" << left_data
-              << "]";
+    if (buf->ReadableBytes() > 0) {
+        auto left_data = buf->RetrieveAllAsString();
+        LOG_DEBUG << conn->peer_addr().IpPort() << " received left data ["
+                  << left_data << "]";
+    }
 }
 
 std::shared_ptr<RtspRequestHead>
@@ -382,6 +439,8 @@ void RtspConnection::HandleMethodSetup(
         }
 
         rtsp_session_->Setup(track, tcp_conn_, rtp_channel, rtcp_channel);
+        rtp_channel_ = rtp_channel;
+        rtcp_channel_ = rtcp_channel;
 
         auto session_id = rtsp_session_->id();
         LOG_DEBUG << "session id " << session_id;

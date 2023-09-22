@@ -64,6 +64,9 @@
         "stop_token": "cpp",
         "thread": "cpp",
         "cstdarg": "cpp",
-        "iomanip": "cpp"
+        "iomanip": "cpp",
+        "buffer": "cpp",
+        "internet": "cpp",
+        "socket": "cpp"
     }
 }

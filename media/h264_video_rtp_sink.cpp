@@ -5,6 +5,8 @@
 
 #include <random>
 
+#define RTSP_INTERLEAVED_SIZE 4
+
 namespace muduo_media {
 H264VideoRtpSink::H264VideoRtpSink(const muduo::net::TcpConnectionPtr &tcp_conn,
                                    int8_t rtp_channel)
@@ -41,7 +43,32 @@ void H264VideoRtpSink::Send(const unsigned char *data, int len,
 
 void H264VideoRtpSink::SendOverTcp(const unsigned char *data, int len,
                                    const std::shared_ptr<void> &add_data) {
-    LOG_DEBUG << "send " << init_seq_++;
+
+    /*
+     *   0 1 2 3 4 5 6 7 8 9
+     *  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+     *  |F|NRI|  Type   | a single NAL unit ... |
+     *  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+     */
+
+    std::unique_ptr<unsigned char[]> new_buf(
+        new unsigned char[RTSP_INTERLEAVED_SIZE + RTP_HEADER_SIZE + len]);
+
+    uint8_t *ptr = new_buf.get();
+    ptr[0] = '$';
+    ptr[1] = (uint8_t)rtp_channel_;
+    ptr[2] = (uint8_t)(((RTP_HEADER_SIZE + len) & 0xFF00) >> 8);
+    ptr[3] = (uint8_t)((RTP_HEADER_SIZE + len) & 0xFF);
+
+    LOG_TRACE << "send seq " << init_seq_;
+    RtpHeader *header = (RtpHeader *)add_data.get();
+    header->seq = muduo::HostToNetwork16(init_seq_++); // 随机初值，自动增长
+
+    memcpy(new_buf.get() + RTSP_INTERLEAVED_SIZE, header, RTP_HEADER_SIZE);
+    memcpy(new_buf.get() + RTSP_INTERLEAVED_SIZE + RTP_HEADER_SIZE, data, len);
+
+    tcp_conn_->Send(new_buf.get(),
+                    RTSP_INTERLEAVED_SIZE + RTP_HEADER_SIZE + len);
 }
 
 void H264VideoRtpSink::SendOverUdp(const unsigned char *data, int len,
@@ -69,7 +96,7 @@ void H264VideoRtpSink::SendOverUdp(const unsigned char *data, int len,
         udp_conn_->Send(new_buf.get(), RTP_HEADER_SIZE + len);
 
     } else {
-        //分片打包的话，那么在RTP载荷开始有两个字节的信息，然后再是NALU的内容
+        // 分片打包的话，那么在RTP载荷开始有两个字节的信息，然后再是NALU的内容
         /*
          *  0                   1                   2
          *  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3

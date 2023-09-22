@@ -24,6 +24,9 @@ public:
                    muduo::net::Buffer *buf,
                    muduo::event_loop::Timestamp timestamp);
 
+    // 下一条消息解析类型
+    enum NextMessageType { kMessageNone, kMessageRtcp, kMessageRtp };
+
 private:
     std::shared_ptr<RtspRequestHead>
     ParseRequestHead(muduo::net::Buffer *buf,
@@ -61,6 +64,8 @@ private:
 private:
     muduo::net::TcpConnectionPtr tcp_conn_;
     GetMediaSessionCallback get_media_session_callback_;
+    NextMessageType next_type_;
+    uint16_t next_length_;
 
     std::weak_ptr<MediaSession> active_media_session_;
     std::string media_session_name_;
@@ -68,6 +73,9 @@ private:
     std::shared_ptr<RtspSession> rtsp_session_;
 
     RtpTransportProtocol rtp_transport_;
+
+    uint8_t rtp_channel_;
+    uint8_t rtcp_channel_;
 };
 
 using RtspConnectionPtr = std::shared_ptr<RtspConnection>;
