@@ -17,11 +17,13 @@ public:
                 const std::weak_ptr<MediaSession> &media_session);
     ~RtspSession();
 
+    // over udp
     void Setup(const std::string &track,
                const muduo::net::InetAddress &peer_rtp_addr,
                const muduo::net::InetAddress &peer_rtcp_addr,
                unsigned short &local_rtp_port, unsigned short &local_rtcp_port);
 
+    // over tcp
     void Setup(const std::string &track,
                const muduo::net::TcpConnectionPtr &tcp_conn, int8_t rtp_channel,
                int8_t rtcp_channel);
@@ -30,6 +32,13 @@ public:
 
     void Play();
     void Teardown();
+
+private:
+    void OnRtpMessage(const muduo::net::UdpServerPtr &, muduo::net::Buffer *,
+                      struct sockaddr_in6 *, muduo::event_loop::Timestamp);
+
+    void OnRtcpMessage(const muduo::net::UdpServerPtr &, muduo::net::Buffer *,
+                       struct sockaddr_in6 *, muduo::event_loop::Timestamp);
 
 private:
     muduo::event_loop::EventLoop *loop_;

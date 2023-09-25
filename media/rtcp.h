@@ -14,20 +14,61 @@ namespace muduo_media {
 |V=2|P|    RC   |   PT=SR=200   |             length L          |
 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
  */
-typedef struct _rtcp_hdr_t {
-    uint8_t rc : 5; /* reception report count */
-    uint8_t p : 1;  /* padding */
-    uint8_t v : 2;  /* version */
-
+struct RtcpHeader {
+    uint8_t rc : 5;  /* reception report count */
+    uint8_t p : 1;   /* padding */
+    uint8_t v : 2;   /* version */
     uint8_t pt;      /* packet type */
-    
     uint16_t length; /* pkt len in words, w/o this word */
-} RtcpHeader;
+    uint32_t ssrc;
+};
+
+#define RTCP_LENGTH_WORDS 4
+
+struct RtcpSenderInfo {
+    uint32_t ts_msw;
+    uint32_t ts_lsw;
+    uint32_t rtp_ts;
+    uint32_t packets;
+    uint32_t octets;
+};
+
+struct RtcpReportBlock {
+    uint32_t ssrc;              // data source being reported
+    uint8_t fraction;           // fraction lost since last SR/RR
+    uint32_t lost_packets : 24; // cumul. no. pkts lost (signed!)
+    uint32_t sequence;          // extended last seq. no. received
+    uint32_t jitter;            // interarrival jitter
+    uint32_t lsr;               // last SR packet from this source
+    uint32_t dlsr;              // delay since last SR packet
+};
+
+enum class RtcpSDESItemType : int8_t {
+    CNAME = 1,
+    NAME = 2,
+    EMAIL = 3,
+    PHONE = 4,
+    LOC = 5,
+    TOOL = 6,
+    NOTE = 7,
+    PRIV = 8
+};
+
+struct RtcpSDESItem {
+    uint8_t type; // RtcpSDESItemType
+    uint8_t length;
+    char text[0];
+};
+
+struct RtcpSDESChunk {
+    uint32_t ssrc;
+    RtcpSDESItem items[1];
+};
 
 /**
  * RTCP报告类型
  */
-enum class RtcpPacketType {
+enum class RtcpPacketType : uint8_t {
     RTCP_FIR = 192,     // 关键帧请求, RFC2032
     RTCP_NACK = 193,    // 丢包重传, RFC2032
     RTCP_SMPTETC = 194, // RFC5484

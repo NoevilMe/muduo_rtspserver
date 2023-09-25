@@ -1,5 +1,7 @@
 #include "rtsp_session.h"
+#include "eventloop/endian.h"
 #include "logger/logger.h"
+#include "media/rtcp.h"
 #include "net/tcp_connection.h"
 #include "rtsp_stream_state.h"
 
@@ -43,6 +45,11 @@ void RtspSession::Setup(const std::string &track,
             rtp_conn_.reset(new muduo::net::UdpVirtualConnection(
                 loop_, "rtp_conn", rtp_sockfd, local_rtp_addr, peer_rtp_addr));
 
+            rtp_conn_->set_message_callback(
+                std::bind(&RtspSession::OnRtcpMessage, this,
+                          std::placeholders::_1, std::placeholders::_2,
+                          std::placeholders::_3, std::placeholders::_4));
+
             if (!rtp_conn_->Bind()) {
                 LOG_ERROR << "failed to bind rtp " << local_rtp_addr.IpPort();
                 continue;
@@ -61,6 +68,11 @@ void RtspSession::Setup(const std::string &track,
             rtcp_conn_.reset(new muduo::net::UdpVirtualConnection(
                 loop_, "rtcp_conn", rtcp_sockfd, local_rtcp_addr,
                 peer_rtcp_addr));
+
+            rtcp_conn_->set_message_callback(
+                std::bind(&RtspSession::OnRtcpMessage, this,
+                          std::placeholders::_1, std::placeholders::_2,
+                          std::placeholders::_3, std::placeholders::_4));
 
             if (!rtcp_conn_->Bind()) {
                 LOG_ERROR << "failed to bind rtcp " << local_rtcp_addr.IpPort();
@@ -118,6 +130,32 @@ void RtspSession::Teardown() {
         i.second->Teardown();
     }
     // TODO: release session
+}
+void RtspSession::OnRtpMessage(const muduo::net::UdpServerPtr &,
+                               muduo::net::Buffer *buf,
+                               struct sockaddr_in6 *addr,
+                               muduo::event_loop::Timestamp timestamp) {
+
+    std::string data = buf->RetrieveAllAsString();
+    LOG_DEBUG << data;
+}
+
+void RtspSession::OnRtcpMessage(const muduo::net::UdpServerPtr &,
+                                muduo::net::Buffer *buf,
+                                struct sockaddr_in6 *addr,
+                                muduo::event_loop::Timestamp timestamp) {
+
+    std::string data = buf->TryRetrieveAllAsString();
+    LOG_DEBUG << data;
+
+    auto data_ptr = buf->Peek();
+    RtcpHeader rtcp = {0};
+    memcpy(&rtcp, data_ptr, sizeof(RtcpHeader));
+    rtcp.length = muduo::NetworkToHost16(rtcp.length);
+
+    LOG_DEBUG << "rtcp V " << rtcp.v << ", P " << rtcp.p << ", RC " << rtcp.rc
+              << ", PT " << rtcp.pt << ", length " << rtcp.length;
+    buf->RetrieveAll();
 }
 
 } // namespace muduo_media

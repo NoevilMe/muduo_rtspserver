@@ -61,6 +61,12 @@ private:
 
     void SendResponse(const char *buf, int size);
 
+    // Parse
+    void OnRtcpMessages(const char *buf, size_t size);
+    void OnRtspInterleavedFrameMessage(const char *buf, size_t size);
+    void OnRtcpRR(uint8_t rc, const char *buf, size_t size);
+    void OnRtcpSDES(uint8_t rc, const char *buf, size_t size);
+
 private:
     muduo::net::TcpConnectionPtr tcp_conn_;
     GetMediaSessionCallback get_media_session_callback_;
