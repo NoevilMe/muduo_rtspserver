@@ -19,8 +19,6 @@ RtspSession::~RtspSession() {
     LOG_DEBUG << "RtspSession::dtor at " << this;
 
     states_.clear();
-    rtp_conn_.reset();
-    rtcp_conn_.reset();
     media_session_.reset();
     tcp_conn_.reset();
 }
@@ -31,6 +29,8 @@ void RtspSession::Setup(const std::string &track,
                         unsigned short &local_rtp_port,
                         unsigned short &local_rtcp_port) {
 
+    std::shared_ptr<muduo::net::UdpVirtualConnection> rtp_conn;
+    std::shared_ptr<muduo::net::UdpVirtualConnection> rtcp_conn;
     std::random_device rd;
 
     for (;;) {
@@ -42,15 +42,10 @@ void RtspSession::Setup(const std::string &track,
 
             int rtp_sockfd = muduo::net::sockets::CreateNonblockingUdp(AF_INET);
             muduo::net::InetAddress local_rtp_addr(local_rtp_port);
-            rtp_conn_.reset(new muduo::net::UdpVirtualConnection(
+            rtp_conn.reset(new muduo::net::UdpVirtualConnection(
                 loop_, "rtp_conn", rtp_sockfd, local_rtp_addr, peer_rtp_addr));
 
-            rtp_conn_->set_message_callback(
-                std::bind(&RtspSession::OnRtcpMessage, this,
-                          std::placeholders::_1, std::placeholders::_2,
-                          std::placeholders::_3, std::placeholders::_4));
-
-            if (!rtp_conn_->Bind()) {
+            if (!rtp_conn->Bind()) {
                 LOG_ERROR << "failed to bind rtp " << local_rtp_addr.IpPort();
                 continue;
             }
@@ -65,23 +60,18 @@ void RtspSession::Setup(const std::string &track,
 
             muduo::net::InetAddress local_rtcp_addr(local_rtcp_port);
 
-            rtcp_conn_.reset(new muduo::net::UdpVirtualConnection(
+            rtcp_conn.reset(new muduo::net::UdpVirtualConnection(
                 loop_, "rtcp_conn", rtcp_sockfd, local_rtcp_addr,
                 peer_rtcp_addr));
 
-            rtcp_conn_->set_message_callback(
-                std::bind(&RtspSession::OnRtcpMessage, this,
-                          std::placeholders::_1, std::placeholders::_2,
-                          std::placeholders::_3, std::placeholders::_4));
-
-            if (!rtcp_conn_->Bind()) {
+            if (!rtcp_conn->Bind()) {
                 LOG_ERROR << "failed to bind rtcp " << local_rtcp_addr.IpPort();
                 continue;
             }
         }
 
-        rtp_conn_->BindingFinished();
-        rtcp_conn_->BindingFinished();
+        rtp_conn->BindingFinished();
+        rtcp_conn->BindingFinished();
 
         id_ = rd() & 0xffffff;
         break;
@@ -91,13 +81,45 @@ void RtspSession::Setup(const std::string &track,
 
     MediaSubsessionPtr subsession = valid_media_session->GetSubsession(track);
 
-    RtpSinkPtr rtp_sink = subsession->NewRtpSink(rtp_conn_);
+    RtpSinkPtr rtp_sink = subsession->NewRtpSink(rtp_conn);
     MultiFrameSourcePtr frame_source = subsession->NewMultiFrameSouce();
 
-    StreamStatePtr state = std::make_shared<RtspStreamState>(
+    RtspStreamStatePtr state = std::make_shared<RtspStreamState>(
         loop_, subsession, rtp_sink, frame_source);
 
+    rtcp_conn->set_message_callback(std::bind(
+        &RtspStreamState::OnUdpRtcpMessage, state.get(), std::placeholders::_1,
+        std::placeholders::_2, std::placeholders::_3, std::placeholders::_4));
+
+    // state holds the rtcp_conn by function object
+    state->set_rtcp_goodbye_callback(std::bind(&RtspSession::SendUdpRtcpGoodbye,
+                                               this, rtcp_conn,
+                                               std::placeholders::_1));
+
     states_.insert(std::make_pair(track, state));
+
+    {
+        std::shared_ptr<ChannelOrPortStreamBinding> rtp_binding =
+            std::make_shared<ChannelOrPortStreamBinding>();
+        rtp_binding->cop_type = kPortRtp;
+        rtp_binding->cop_rtp = local_rtp_port;
+        rtp_binding->cop_rtcp = local_rtcp_port;
+        rtp_binding->media_subsession = track;
+        rtp_binding->state = state;
+
+        binding_states_.insert(std::make_pair(local_rtp_port, rtp_binding));
+    }
+
+    {
+        std::shared_ptr<ChannelOrPortStreamBinding> rtcp_binding =
+            std::make_shared<ChannelOrPortStreamBinding>();
+        rtcp_binding->cop_type = kPortRtcp;
+        rtcp_binding->cop_rtp = local_rtp_port;
+        rtcp_binding->cop_rtcp = local_rtcp_port;
+        rtcp_binding->media_subsession = track;
+        rtcp_binding->state = state;
+        binding_states_.insert(std::make_pair(local_rtcp_port, rtcp_binding));
+    }
 }
 
 void RtspSession::Setup(const std::string &track,
@@ -113,10 +135,36 @@ void RtspSession::Setup(const std::string &track,
     RtpSinkPtr rtp_sink = subsession->NewRtpSink(tcp_conn, rtp_channel);
     MultiFrameSourcePtr frame_source = subsession->NewMultiFrameSouce();
 
-    StreamStatePtr state = std::make_shared<RtspStreamState>(
+    RtspStreamStatePtr state = std::make_shared<RtspStreamState>(
         loop_, subsession, rtp_sink, frame_source);
+    state->set_rtcp_goodbye_callback(std::bind(&RtspSession::SendTcpRtcpGoodbye,
+                                               this, rtcp_channel,
+                                               std::placeholders::_1));
 
     states_.insert(std::make_pair(track, state));
+
+    {
+        std::shared_ptr<ChannelOrPortStreamBinding> rtp_binding =
+            std::make_shared<ChannelOrPortStreamBinding>();
+        rtp_binding->cop_type = kChannelRtp;
+        rtp_binding->cop_rtp = rtp_channel;
+        rtp_binding->cop_rtcp = rtcp_channel;
+        rtp_binding->media_subsession = track;
+        rtp_binding->state = state;
+
+        binding_states_.insert(std::make_pair(rtp_channel, rtp_binding));
+    }
+
+    {
+        std::shared_ptr<ChannelOrPortStreamBinding> rtcp_binding =
+            std::make_shared<ChannelOrPortStreamBinding>();
+        rtcp_binding->cop_type = kChannelRtcp;
+        rtcp_binding->cop_rtp = rtp_channel;
+        rtcp_binding->cop_rtcp = rtcp_channel;
+        rtcp_binding->media_subsession = track;
+        rtcp_binding->state = state;
+        binding_states_.insert(std::make_pair(rtcp_channel, rtcp_binding));
+    }
 }
 
 void RtspSession::Play() {
@@ -131,31 +179,33 @@ void RtspSession::Teardown() {
     }
     // TODO: release session
 }
-void RtspSession::OnRtpMessage(const muduo::net::UdpServerPtr &,
-                               muduo::net::Buffer *buf,
-                               struct sockaddr_in6 *addr,
-                               muduo::event_loop::Timestamp timestamp) {
 
-    std::string data = buf->RetrieveAllAsString();
-    LOG_DEBUG << data;
+void RtspSession::ParseTcpInterleavedFrameBody(uint8_t channel, const char *buf,
+                                               size_t size) {
+
+    auto it = binding_states_.find(channel);
+    if (it == binding_states_.end()) {
+        LOG_ERROR << "can't find channel " << channel << " binding";
+        return;
+    }
+
+    if (it->second->cop_type == kChannelRtcp ||
+        it->second->cop_type == kPortRtcp) {
+        it->second->state->ParseRTCP(buf, size);
+    } else {
+        it->second->state->ParseRTP(buf, size);
+    }
 }
 
-void RtspSession::OnRtcpMessage(const muduo::net::UdpServerPtr &,
-                                muduo::net::Buffer *buf,
-                                struct sockaddr_in6 *addr,
-                                muduo::event_loop::Timestamp timestamp) {
+void RtspSession::SendTcpRtcpGoodbye(uint8_t channel, uint32_t ssrc) {
+    LOG_DEBUG << "send tcp goodbye on channel " << channel << ", ssrc " << ssrc;
+}
 
-    std::string data = buf->TryRetrieveAllAsString();
-    LOG_DEBUG << data;
-
-    auto data_ptr = buf->Peek();
-    RtcpHeader rtcp = {0};
-    memcpy(&rtcp, data_ptr, sizeof(RtcpHeader));
-    rtcp.length = muduo::NetworkToHost16(rtcp.length);
-
-    LOG_DEBUG << "rtcp V " << rtcp.v << ", P " << rtcp.p << ", RC " << rtcp.rc
-              << ", PT " << rtcp.pt << ", length " << rtcp.length;
-    buf->RetrieveAll();
+void RtspSession::SendUdpRtcpGoodbye(
+    const std::shared_ptr<muduo::net::UdpVirtualConnection> &udp_conn,
+    uint32_t ssrc) {
+    LOG_DEBUG << "send udp goodbye on udp " << udp_conn->name() << ", ssrc "
+              << ssrc;
 }
 
 } // namespace muduo_media

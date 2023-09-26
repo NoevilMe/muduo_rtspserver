@@ -28,9 +28,13 @@ public:
     ~H264FileSource();
 
     bool GetNextFrame(AVPacket *) override;
+    uint32_t SSRC() override;
 
 private:
     int GetAnnexbNALU(H264Nalu *nalu);
+
+private:
+    uint32_t ssrc_;
 };
 
 } // namespace muduo_media

@@ -4,6 +4,7 @@
 #include "media/av_packet.h"
 
 #include <cstring>
+#include <random>
 
 namespace muduo_media {
 
@@ -57,8 +58,12 @@ static bool MatchStartCode4Bytes(unsigned char *Buf) {
         return true;
 }
 
-H264FileSource::H264FileSource(FILE *file) : MultiFrameFileSource(file) {
+H264FileSource::H264FileSource(FILE *file)
+    : MultiFrameFileSource(file), ssrc_(0) {
     LOG_DEBUG << "H264FileSource::ctor at " << this;
+
+    std::random_device rd;
+    ssrc_ = rd() & 0xFFFFFFFF;
 }
 
 H264FileSource::~H264FileSource() {
@@ -199,5 +204,7 @@ bool H264FileSource::GetNextFrame(AVPacket *packet) {
 
     return data_lenth > 0;
 }
+
+uint32_t H264FileSource::SSRC() { return ssrc_; }
 
 } // namespace muduo_media

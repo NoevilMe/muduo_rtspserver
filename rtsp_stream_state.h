@@ -3,9 +3,12 @@
 
 #include "media/media_subsession.h"
 #include "media/rtp_sink.h"
+#include "net/udp_virtual_connection.h"
 #include "stream_state.h"
 
 namespace muduo_media {
+
+using RtcpGoodbyeCallback = std::function<void(uint32_t)>;
 
 /// @brief RtspSession中表示当前流的状态
 class RtspStreamState : public StreamState {
@@ -19,16 +22,29 @@ public:
     virtual void Play() override;
     virtual void Teardown() override;
 
+    virtual void ParseRTP(const char *buf, size_t size) override;
+    virtual void ParseRTCP(const char *buf, size_t size) override;
+
+    void set_rtcp_goodbye_callback(const RtcpGoodbyeCallback &cb) {
+        goodbye_cb_ = cb;
+    }
+
+    void OnUdpRtcpMessage(const muduo::net::UdpServerPtr &,
+                          muduo::net::Buffer *, struct sockaddr_in6 *,
+                          muduo::event_loop::Timestamp);
+
 private:
     void PlayOnce();
+
+    void OnRtcpRR(uint8_t rc, const char *buf, size_t size);
+    void OnRtcpSDES(uint8_t rc, const char *buf, size_t size);
 
 private:
     MediaSubsessionPtr media_subsession_;
     RtpSinkPtr rtp_sink_;
     MultiFrameSourcePtr frame_source_;
 
-    uint16_t init_seq_;
-    uint32_t ssrc_;
+    RtcpGoodbyeCallback goodbye_cb_;
 };
 
 using RtspStreamStatePtr = std::shared_ptr<RtspStreamState>;

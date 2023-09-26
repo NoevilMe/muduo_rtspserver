@@ -46,10 +46,8 @@ RtspConnection::RtspConnection(const muduo::net::TcpConnectionPtr &conn,
     : tcp_conn_(conn),
       get_media_session_callback_(cb),
       next_type_(kMessageNone),
-      next_length_(0),
-      rtp_transport_(RtpTransportProtocol::kRtpTransportNone),
-      rtp_channel_(-1),
-      rtcp_channel_(-1) {
+      next_ilframe_({0, 0}),
+      rtp_transport_(RtpTransportProtocol::kRtpTransportNone) {
 
     // 消息回调最迟要在tcp connection before_reading_callback 中来设置
     tcp_conn_->set_message_callback(
@@ -86,20 +84,21 @@ void RtspConnection::OnMessage(const muduo::net::TcpConnectionPtr conn,
             return;
         } else {
             LOG_TRACE << "parse RTSP Interleaved Frame";
-            OnRtspInterleavedFrameMessage(data_ptr,
-                                          sizeof(RtspInterleavedFrame));
+            ParseInterleavedFrameHead(data_ptr, sizeof(RtspInterleavedFrame));
             buf->Retrieve(sizeof(RtspInterleavedFrame));
             return;
         }
-    } else if (kMessageRtcp == next_type_) {
-        if (buf->ReadableBytes() < next_length_)
+    } else if (kMessageILFrame == next_type_) {
+        if (buf->ReadableBytes() < next_ilframe_.length)
             return;
 
-        LOG_TRACE << "parse RTCP size " << next_length_;
-        OnRtcpMessages(data_ptr, next_length_);
-        buf->Retrieve(next_length_);
-        LOG_TRACE << "retrieve RTCP " << next_length_;
-        next_length_ = 0;
+        LOG_TRACE << "parse RTSP Interleaved Frame body size "
+                  << next_ilframe_.length;
+        rtsp_session_->ParseTcpInterleavedFrameBody(
+            next_ilframe_.channel, data_ptr, next_ilframe_.length);
+        buf->Retrieve(next_ilframe_.length);
+        LOG_TRACE << "retrieve " << next_ilframe_.length;
+        next_ilframe_.Reset();
         next_type_ = kMessageNone;
         return;
     }
@@ -419,8 +418,6 @@ void RtspConnection::HandleMethodSetup(
         }
 
         rtsp_session_->Setup(track, tcp_conn_, rtp_channel, rtcp_channel);
-        rtp_channel_ = rtp_channel;
-        rtcp_channel_ = rtcp_channel;
 
         auto session_id = rtsp_session_->id();
         LOG_DEBUG << "session id " << session_id;
@@ -581,90 +578,16 @@ void RtspConnection::SendResponse(const char *buf, int size) {
     tcp_conn_->Send(buf, size);
 }
 
-void RtspConnection::OnRtcpMessages(const char *buf, size_t size) {
-    size_t parse_size = 0;
-    size_t left_size = size;
-    while (left_size > sizeof(RtcpHeader)) {
-        RtcpHeader rtcp = {0};
-        memcpy(&rtcp, buf + parse_size, sizeof(RtcpHeader));
-        rtcp.length = muduo::NetworkToHost16(rtcp.length);
-        rtcp.ssrc = muduo::NetworkToHost32(rtcp.ssrc);
-
-        size_t packet_size = (rtcp.length + 1) * RTCP_LENGTH_WORDS;
-
-        LOG_DEBUG << "RTCP V " << rtcp.v << ", P " << rtcp.p << ", RC "
-                  << rtcp.rc << ", PT " << rtcp.pt << ", length " << rtcp.length
-                  << ", ssrc " << rtcp.ssrc << ", RTCP packet size "
-                  << packet_size;
-
-        if (rtcp.pt == (uint8_t)RtcpPacketType::RTCP_RR) {
-            OnRtcpRR(rtcp.rc, buf + parse_size + sizeof(RtcpHeader),
-                     (rtcp.length - 1) * RTCP_LENGTH_WORDS);
-        } else if (rtcp.pt == (uint8_t)RtcpPacketType::RTCP_SDES) {
-            OnRtcpSDES(rtcp.rc,
-                       buf + parse_size + sizeof(RtcpHeader) -
-                           sizeof(rtcp.ssrc), // ssrc belongs to chunk
-                       rtcp.length * RTCP_LENGTH_WORDS);
-        }
-
-        parse_size += packet_size;
-        left_size -= packet_size;
-        LOG_TRACE << "left size " << left_size;
-    }
-}
-
-void RtspConnection::OnRtcpRR(uint8_t rc, const char *buf, size_t /*size*/) {
-    for (uint8_t idx = 0; idx < rc; ++idx) {
-        RtcpReportBlock block = {0};
-        memcpy(&block, buf + idx * sizeof(RtcpReportBlock),
-               sizeof(RtcpReportBlock));
-        block.ssrc = muduo::NetworkToHost32(block.ssrc);
-        block.lost_packets = muduo::NetworkToHost32(block.lost_packets);
-        block.sequence = muduo::NetworkToHost32(block.sequence);
-        block.jitter = muduo::NetworkToHost32(block.jitter);
-        block.lsr = muduo::NetworkToHost32(block.lsr);
-        block.dlsr = muduo::NetworkToHost32(block.dlsr);
-        LOG_DEBUG << "report block ssrc " << block.ssrc << ", fraction lost "
-                  << block.fraction << ", packets lost " << block.lost_packets
-                  << ", highest sequence number " << block.sequence
-                  << ", interarrival jitter " << block.jitter << ", last SR "
-                  << block.lsr << ", delay since last SR " << block.dlsr;
-    }
-}
-
-void RtspConnection::OnRtcpSDES(uint8_t rc, const char *buf, size_t size) {
-    auto pdata = buf;
-
-    RtcpSDESChunk chunk{0};
-    memcpy(&chunk, pdata, sizeof(RtcpSDESChunk));
-    chunk.ssrc = muduo::NetworkToHost32(chunk.ssrc);
-
-    pdata += sizeof(RtcpSDESChunk);
-
-    LOG_DEBUG << "chunk item type " << chunk.items[0].type << ", length "
-              << chunk.items[0].length << ", text "
-              << muduo::StringPiece(pdata, chunk.items[0].length);
-
-    pdata += chunk.items[0].length;
-    LOG_DEBUG << "left SDES " << buf + size - pdata;
-}
-
-void RtspConnection::OnRtspInterleavedFrameMessage(const char *buf,
-                                                   size_t size) {
+void RtspConnection::ParseInterleavedFrameHead(const char *buf, size_t size) {
     RtspInterleavedFrame rif{0};
     memcpy(&rif, buf, sizeof(RtspInterleavedFrame));
     rif.length = muduo::NetworkToHost16(rif.length);
     LOG_DEBUG << "RTSP Interleaved Frame, magic " << (char)rif.magic
               << ", channel " << rif.channel << ", length " << rif.length;
 
-    if (rif.channel == rtp_channel_) {
-        LOG_DEBUG << "rtp channel " << rif.channel;
-        next_type_ = kMessageRtp;
-    } else if (rif.channel == rtcp_channel_) {
-        LOG_DEBUG << "rtcp channel " << rif.channel;
-        next_type_ = kMessageRtcp;
-        next_length_ = rif.length;
-    }
+    next_ilframe_.channel = rif.channel;
+    next_ilframe_.length = rif.length;
+    next_type_ = kMessageILFrame;
 }
 
 } // namespace muduo_media

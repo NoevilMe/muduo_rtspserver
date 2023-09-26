@@ -19,6 +19,9 @@ public:
     virtual void Play() = 0;
     virtual void Teardown() = 0;
 
+    virtual void ParseRTP(const char *buf, size_t size) = 0;
+    virtual void ParseRTCP(const char *buf, size_t size) = 0;
+
 protected:
     muduo::event_loop::EventLoop *loop_;
     bool playing_;

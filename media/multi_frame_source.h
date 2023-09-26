@@ -15,6 +15,7 @@ public:
     virtual ~MultiFrameSource() = default;
 
     virtual bool GetNextFrame(AVPacket *) = 0;
+    virtual uint32_t SSRC() = 0;
 };
 
 using MultiFrameSourcePtr = std::shared_ptr<MultiFrameSource>;

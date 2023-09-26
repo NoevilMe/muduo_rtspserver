@@ -33,23 +33,34 @@ public:
     void Play();
     void Teardown();
 
-private:
-    void OnRtpMessage(const muduo::net::UdpServerPtr &, muduo::net::Buffer *,
-                      struct sockaddr_in6 *, muduo::event_loop::Timestamp);
+    void ParseTcpInterleavedFrameBody(uint8_t channel, const char *buf,
+                                      size_t size);
 
-    void OnRtcpMessage(const muduo::net::UdpServerPtr &, muduo::net::Buffer *,
-                       struct sockaddr_in6 *, muduo::event_loop::Timestamp);
+private:
+    enum ChannelOrPortType { kChannelRtp, kChannelRtcp, kPortRtp, kPortRtcp };
+    struct ChannelOrPortStreamBinding {
+        ChannelOrPortType cop_type;
+        uint16_t cop_rtp;
+        uint16_t cop_rtcp;
+        std::string media_subsession;
+        StreamStatePtr state;
+    };
+
+private:
+    void SendTcpRtcpGoodbye(uint8_t channel, uint32_t ssrc);
+    void SendUdpRtcpGoodbye(
+        const std::shared_ptr<muduo::net::UdpVirtualConnection> &,
+        uint32_t ssrc);
 
 private:
     muduo::event_loop::EventLoop *loop_;
     std::weak_ptr<MediaSession> media_session_;
+    int id_;
 
     muduo::net::TcpConnectionPtr tcp_conn_;
 
-    int id_;
-
-    std::shared_ptr<muduo::net::UdpVirtualConnection> rtp_conn_;
-    std::shared_ptr<muduo::net::UdpVirtualConnection> rtcp_conn_;
+    std::map<uint8_t, std::shared_ptr<ChannelOrPortStreamBinding>>
+        binding_states_;
 
     std::map<std::string, StreamStatePtr> states_;
 };
