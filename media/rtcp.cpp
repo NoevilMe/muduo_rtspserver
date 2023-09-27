@@ -7,7 +7,31 @@
 
 namespace muduo_media {
 
-std::string RtcpSRMessage::Serialize() { return std::string(); }
+std::string RtcpSRMessage::Serialize() {
+
+    header.rc = 0;
+    header.length = muduo::HostToNetwork16(
+        (sizeof(header) + sizeof(sender_info)) / RTCP_LENGTH_DWORD - 1);
+    header.pt = (uint8_t)RtcpPacketType::RTCP_SR;
+    header.ssrc = muduo::HostToNetwork32(header.ssrc);
+
+    sender_info.ts_msw = muduo::HostToNetwork32(sender_info.ts_msw);
+    sender_info.ts_lsw = muduo::HostToNetwork32(sender_info.ts_lsw);
+    sender_info.rtp_ts = muduo::HostToNetwork32(sender_info.rtp_ts);
+    sender_info.packets = muduo::HostToNetwork32(sender_info.packets);
+    sender_info.octets = muduo::HostToNetwork32(sender_info.octets);
+
+    std::string binary;
+    binary.resize(sizeof(header) + sizeof(sender_info));
+    char *pdata = &binary[0];
+
+    memcpy(pdata, &header, sizeof(header));
+    memcpy(pdata + sizeof(header), &sender_info, sizeof(sender_info));
+
+    LOG_DEBUG << "RtcpSRMessage " << binary.size();
+
+    return binary;
+}
 
 bool RtcpSRMessage::Deserialize(const char *buf, size_t size) { return true; }
 
@@ -84,9 +108,29 @@ bool RtcpSDESMessage::Deserialize(const char *buf, size_t size) {
     return true;
 }
 
-std::string RtcpBYEMessage::Serialize() { return std::string(); }
+std::string RtcpBYEMessage::Serialize() {
 
-bool RtcpBYEMessage::Deserialize(const char *buf, size_t size) { return true; }
+    header.rc = 1;
+    header.length =
+        muduo::HostToNetwork16(sizeof(header) / RTCP_LENGTH_DWORD - 1);
+    header.pt = (uint8_t)RtcpPacketType::RTCP_BYE;
+    header.ssrc = muduo::HostToNetwork32(header.ssrc);
+
+    std::string binary;
+    binary.resize(sizeof(header));
+    char *pdata = &binary[0];
+
+    memcpy(pdata, &header, sizeof(header));
+
+    LOG_DEBUG << "RtcpBYEMessage " << binary.size();
+
+    return binary;
+}
+
+bool RtcpBYEMessage::Deserialize(const char *buf, size_t size) {
+    LOG_DEBUG << "RtcpBYEMessage " << header.ssrc;
+    return true;
+}
 
 std::string RtcpAPPMessage::Serialize() { return std::string(); }
 

@@ -2,13 +2,15 @@
 #define ABB750C3_2A77_4AC5_811A_AD81F9C0B3F7
 
 #include "media/media_subsession.h"
+#include "media/rtcp.h"
 #include "media/rtp_sink.h"
 #include "net/udp_virtual_connection.h"
 #include "stream_state.h"
 
 namespace muduo_media {
 
-using RtcpGoodbyeCallback = std::function<void(uint32_t)>;
+using SendRtcpMessageCallback =
+    std::function<void(const std::vector<std::shared_ptr<RtcpMessage>> &)>;
 
 /// @brief RtspSession中表示当前流的状态
 class RtspStreamState : public StreamState {
@@ -25,8 +27,8 @@ public:
     virtual void ParseRTP(const char *buf, size_t size) override;
     virtual void ParseRTCP(const char *buf, size_t size) override;
 
-    void set_rtcp_goodbye_callback(const RtcpGoodbyeCallback &cb) {
-        goodbye_cb_ = cb;
+    void set_send_rtcp_message_callback(const SendRtcpMessageCallback &cb) {
+        rtcp_cb_ = cb;
     }
 
     void OnUdpRtcpMessage(const muduo::net::UdpServerPtr &,
@@ -36,15 +38,16 @@ public:
 private:
     void PlayOnce();
 
-    void OnRtcpRR(uint8_t rc, const char *buf, size_t size);
-    void OnRtcpSDES(uint8_t rc, const char *buf, size_t size);
+    void SendRtcpBye();
 
 private:
     MediaSubsessionPtr media_subsession_;
     RtpSinkPtr rtp_sink_;
     MultiFrameSourcePtr frame_source_;
 
-    RtcpGoodbyeCallback goodbye_cb_;
+    SendRtcpMessageCallback rtcp_cb_;
+
+    uint32_t last_rtp_ts_;
 };
 
 using RtspStreamStatePtr = std::shared_ptr<RtspStreamState>;

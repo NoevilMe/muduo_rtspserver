@@ -69,6 +69,9 @@ void H264VideoRtpSink::SendOverTcp(const unsigned char *data, int len,
 
     tcp_conn_->Send(new_buf.get(),
                     RTSP_INTERLEAVED_SIZE + RTP_HEADER_SIZE + len);
+
+    ++packets_;
+    octets_ += RTSP_INTERLEAVED_SIZE + RTP_HEADER_SIZE + len;
 }
 
 void H264VideoRtpSink::SendOverUdp(const unsigned char *data, int len,
@@ -94,6 +97,9 @@ void H264VideoRtpSink::SendOverUdp(const unsigned char *data, int len,
         memcpy(new_buf.get() + RTP_HEADER_SIZE, data, len);
 
         udp_conn_->Send(new_buf.get(), RTP_HEADER_SIZE + len);
+
+        ++packets_;
+        octets_ += RTP_HEADER_SIZE + len;
 
     } else {
         // 分片打包的话，那么在RTP载荷开始有两个字节的信息，然后再是NALU的内容
@@ -157,6 +163,9 @@ void H264VideoRtpSink::SendOverUdp(const unsigned char *data, int len,
             udp_conn_->Send(new_buf.get(),
                             RTP_HEADER_SIZE + RTP_MAX_PAYLOAD_SIZE);
 
+            ++packets_;
+            octets_ += RTP_HEADER_SIZE + RTP_MAX_PAYLOAD_SIZE;
+
             pdata += RTP_MAX_PAYLOAD_SIZE - RTP_FU_A_HEAD_LEN;
             data_len -= RTP_MAX_PAYLOAD_SIZE - RTP_FU_A_HEAD_LEN;
 
@@ -179,6 +188,9 @@ void H264VideoRtpSink::SendOverUdp(const unsigned char *data, int len,
 
         udp_conn_->Send(new_buf.get(),
                         RTP_HEADER_SIZE + RTP_FU_A_HEAD_LEN + data_len);
+
+        ++packets_;
+        octets_ += RTP_HEADER_SIZE + RTP_FU_A_HEAD_LEN + data_len;
     }
 }
 

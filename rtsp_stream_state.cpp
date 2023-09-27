@@ -14,7 +14,8 @@ RtspStreamState::RtspStreamState(muduo::event_loop::EventLoop *loop,
     : StreamState(loop),
       media_subsession_(media_subsession),
       rtp_sink_(rtp_sink),
-      frame_source_(frame_source) {
+      frame_source_(frame_source),
+      last_rtp_ts_(0) {
 
     LOG_DEBUG << "RtspStreamState::ctor at " << this;
 }
@@ -65,11 +66,12 @@ void RtspStreamState::ParseRTCP(const char *buf, size_t size) {
             rtcp_sdes->Deserialize(buf + parse_size + sizeof(RtcpHeader) -
                                        sizeof(rtcp_header.ssrc),
                                    rtcp_header.length * RTCP_LENGTH_DWORD);
-
-            // OnRtcpSDES(rtcp_header.rc,
-            //            buf + parse_size + sizeof(RtcpHeader) -
-            //                sizeof(rtcp_header.ssrc), // ssrc belongs to chunk
-            //            rtcp_header.length * RTCP_LENGTH_DWORD);
+        } else if (rtcp_header.pt == (uint8_t)RtcpPacketType::RTCP_BYE) {
+            std::unique_ptr<RtcpBYEMessage> rtcp_sdes(new RtcpBYEMessage);
+            rtcp_sdes->header = rtcp_header;
+            rtcp_sdes->Deserialize(buf + parse_size + sizeof(RtcpHeader),
+                                   (rtcp_header.length - 1) *
+                                       RTCP_LENGTH_DWORD);
         }
 
         parse_size += packet_size;
@@ -88,40 +90,36 @@ void RtspStreamState::OnUdpRtcpMessage(const muduo::net::UdpServerPtr &,
     buf->RetrieveAll();
 }
 
-void RtspStreamState::OnRtcpRR(uint8_t rc, const char *buf, size_t /*size*/) {
-    for (uint8_t idx = 0; idx < rc; ++idx) {
-        RtcpReportBlock block = {0};
-        memcpy(&block, buf + idx * sizeof(RtcpReportBlock),
-               sizeof(RtcpReportBlock));
-        block.ssrc = muduo::NetworkToHost32(block.ssrc);
-        block.lost_packets = muduo::NetworkToHost32(block.lost_packets);
-        block.sequence = muduo::NetworkToHost32(block.sequence);
-        block.jitter = muduo::NetworkToHost32(block.jitter);
-        block.lsr = muduo::NetworkToHost32(block.lsr);
-        block.dlsr = muduo::NetworkToHost32(block.dlsr);
-        LOG_DEBUG << "report block ssrc " << block.ssrc << ", fraction lost "
-                  << block.fraction << ", packets lost " << block.lost_packets
-                  << ", highest sequence number " << block.sequence
-                  << ", interarrival jitter " << block.jitter << ", last SR "
-                  << block.lsr << ", delay since last SR " << block.dlsr;
+void RtspStreamState::SendRtcpBye() {
+    if (rtcp_cb_) {
+        std::vector<std::shared_ptr<RtcpMessage>> msgs;
+
+        std::shared_ptr<RtcpSRMessage> sr = std::make_shared<RtcpSRMessage>();
+        sr->header.ssrc = frame_source_->SSRC();
+        auto &sender_info = sr->sender_info;
+
+        auto ts = muduo::event_loop::Timestamp::TimespecNow();
+        sender_info.ts_msw =
+            ts.tv_sec + 0x83AA7E80; // NTP timestamp most-significant word (1970
+                                    // epoch -> 1900 epoch)
+        // 1 second = 1,000,000,000,000 picoseconds
+        /* Convert nanoseconds to 32-bits fraction (232 picosecond units) */
+        sender_info.ts_lsw =
+            (uint32_t)((uint64_t)ts.tv_nsec * ((uint64_t)1 << 32) / 1000000000);
+
+        sender_info.rtp_ts = last_rtp_ts_;
+        sender_info.octets = rtp_sink_->octets();
+        sender_info.packets = rtp_sink_->packets();
+
+        msgs.push_back(sr);
+
+        std::shared_ptr<RtcpBYEMessage> bye =
+            std::make_shared<RtcpBYEMessage>();
+        bye->header.ssrc = frame_source_->SSRC();
+
+        msgs.push_back(bye);
+        rtcp_cb_(msgs);
     }
-}
-
-void RtspStreamState::OnRtcpSDES(uint8_t rc, const char *buf, size_t size) {
-    auto pdata = buf;
-
-    // RtcpSDESChunk chunk{0};
-    // memcpy(&chunk, pdata, sizeof(RtcpSDESChunk));
-    // chunk.ssrc = muduo::NetworkToHost32(chunk.ssrc);
-
-    // pdata += sizeof(RtcpSDESChunk);
-
-    // LOG_DEBUG << "chunk item type " << chunk.items[0].type << ", length "
-    //           << chunk.items[0].length << ", text "
-    //           << muduo::StringPiece(pdata, chunk.items[0].length);
-
-    // pdata += chunk.items[0].length;
-    LOG_DEBUG << "left SDES " << buf + size - pdata;
 }
 
 void RtspStreamState::PlayOnce() {
@@ -141,9 +139,7 @@ void RtspStreamState::PlayOnce() {
     // 同一帧可能有多个NALU，如果是同一个帧的多个NALU则需要立即发送
     if (!frame_source_->GetNextFrame(&frame_packet)) {
         LOG_ERROR << "frame source get next frame fail";
-        if (goodbye_cb_) {
-            goodbye_cb_(frame_source_->SSRC());
-        }
+        SendRtcpBye();
     } else {
         LOG_DEBUG << "data length " << frame_packet.size;
         ++play_frames_;
@@ -167,6 +163,8 @@ void RtspStreamState::PlayOnce() {
 
         rtp_sink_->Send(frame_packet.buffer.get(), frame_packet.size,
                         rtp_header);
+
+        last_rtp_ts_ = frame_packet.timestamp;
 
         // 计划下一次发送
         if (frame_packet.size > 0) {

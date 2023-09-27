@@ -1,6 +1,7 @@
 #ifndef ED091CCA_7ECE_478F_86D7_589C367B2D77
 #define ED091CCA_7ECE_478F_86D7_589C367B2D77
 
+#include "media/rtcp.h"
 #include "media_session.h"
 #include "net/udp_virtual_connection.h"
 #include "stream_state.h"
@@ -47,10 +48,11 @@ private:
     };
 
 private:
-    void SendTcpRtcpGoodbye(uint8_t channel, uint32_t ssrc);
-    void SendUdpRtcpGoodbye(
+    void SendTcpRtcpMessages(uint8_t channel, const RtcpMessageVector &msg);
+
+    void SendUdpRtcpMessages(
         const std::shared_ptr<muduo::net::UdpVirtualConnection> &,
-        uint32_t ssrc);
+        const RtcpMessageVector &msg);
 
 private:
     muduo::event_loop::EventLoop *loop_;

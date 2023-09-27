@@ -92,9 +92,9 @@ void RtspSession::Setup(const std::string &track,
         std::placeholders::_2, std::placeholders::_3, std::placeholders::_4));
 
     // state holds the rtcp_conn by function object
-    state->set_rtcp_goodbye_callback(std::bind(&RtspSession::SendUdpRtcpGoodbye,
-                                               this, rtcp_conn,
-                                               std::placeholders::_1));
+    state->set_send_rtcp_message_callback(
+        std::bind(&RtspSession::SendUdpRtcpMessages, this, rtcp_conn,
+                  std::placeholders::_1));
 
     states_.insert(std::make_pair(track, state));
 
@@ -126,6 +126,8 @@ void RtspSession::Setup(const std::string &track,
                         const muduo::net::TcpConnectionPtr &tcp_conn,
                         int8_t rtp_channel, int8_t rtcp_channel) {
 
+    tcp_conn_ = tcp_conn;
+
     std::random_device rd;
     id_ = rd() & 0xffffff;
     auto valid_media_session = media_session_.lock();
@@ -137,9 +139,9 @@ void RtspSession::Setup(const std::string &track,
 
     RtspStreamStatePtr state = std::make_shared<RtspStreamState>(
         loop_, subsession, rtp_sink, frame_source);
-    state->set_rtcp_goodbye_callback(std::bind(&RtspSession::SendTcpRtcpGoodbye,
-                                               this, rtcp_channel,
-                                               std::placeholders::_1));
+    state->set_send_rtcp_message_callback(
+        std::bind(&RtspSession::SendTcpRtcpMessages, this, rtcp_channel,
+                  std::placeholders::_1));
 
     states_.insert(std::make_pair(track, state));
 
@@ -197,15 +199,38 @@ void RtspSession::ParseTcpInterleavedFrameBody(uint8_t channel, const char *buf,
     }
 }
 
-void RtspSession::SendTcpRtcpGoodbye(uint8_t channel, uint32_t ssrc) {
-    LOG_DEBUG << "send tcp goodbye on channel " << channel << ", ssrc " << ssrc;
+void RtspSession::SendTcpRtcpMessages(
+    uint8_t channel, const std::vector<std::shared_ptr<RtcpMessage>> &msg) {
+    LOG_DEBUG << "send RTCP on channel " << channel;
+
+    uint8_t ptr[4] = {0};
+    ptr[0] = '$';
+    ptr[1] = (uint8_t)channel;
+
+    std::string binary;
+    for (auto &m : msg) {
+        binary.append(m->Serialize());
+    }
+
+    ptr[2] = (uint8_t)((binary.size() & 0xFF00) >> 8);
+    ptr[3] = (uint8_t)(binary.size() & 0xFF);
+
+    tcp_conn_->Send(ptr, 4);
+    tcp_conn_->Send(binary);
 }
 
-void RtspSession::SendUdpRtcpGoodbye(
+void RtspSession::SendUdpRtcpMessages(
     const std::shared_ptr<muduo::net::UdpVirtualConnection> &udp_conn,
-    uint32_t ssrc) {
-    LOG_DEBUG << "send udp goodbye on udp " << udp_conn->name() << ", ssrc "
-              << ssrc;
+    const RtcpMessageVector &msg) {
+    LOG_DEBUG << "send RTCP on udp " << udp_conn->name();
+
+    std::string binary;
+    for (auto &m : msg) {
+        binary.append(m->Serialize());
+    }
+
+    // FIXME: too long
+    udp_conn->Send(binary);
 }
 
 } // namespace muduo_media

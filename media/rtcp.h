@@ -2,12 +2,15 @@
 #define C6A67180_CD35_42B2_8219_E6D2F1932DF6
 
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
 
 #define RTCP_LENGTH_DWORD 4
 
 namespace muduo_media {
+
+#define RTCP_VERSION 2
 
 /**
  * RTCP固定头
@@ -102,7 +105,7 @@ enum class RtcpPacketType : uint8_t {
 };
 
 struct RtcpMessage {
-    RtcpMessage() : header({0}) {}
+    RtcpMessage() : header({0}) { header.v = RTCP_VERSION; }
     virtual ~RtcpMessage() {}
 
     RtcpHeader header;
@@ -145,6 +148,9 @@ struct RtcpAPPMessage : public RtcpMessage {
     std::string Serialize() override;
     bool Deserialize(const char *buf, size_t size) override;
 };
+
+using RtcpMessagePtr = std::shared_ptr<RtcpMessage>;
+using RtcpMessageVector = std::vector<RtcpMessagePtr>;
 
 } // namespace muduo_media
 
