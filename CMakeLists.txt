@@ -9,6 +9,7 @@ set(SERVER_TOP ${CMAKE_SOURCE_DIR})
 add_subdirectory(tinymuduo)
 
 set(LIB_MEDIA_SRC
+    media/rtcp.cpp
     media/media_subsession.cpp
     media/file_media_subsession.cpp
     media/h264_file_subsession.cpp

@@ -1,7 +1,11 @@
 #ifndef C6A67180_CD35_42B2_8219_E6D2F1932DF6
 #define C6A67180_CD35_42B2_8219_E6D2F1932DF6
 
-#include <stdint.h>
+#include <cstdint>
+#include <string>
+#include <vector>
+
+#define RTCP_LENGTH_DWORD 4
 
 namespace muduo_media {
 
@@ -21,9 +25,9 @@ struct RtcpHeader {
     uint8_t pt;      /* packet type */
     uint16_t length; /* pkt len in words, w/o this word */
     uint32_t ssrc;
-};
 
-#define RTCP_LENGTH_WORDS 4
+    bool Valid() { return length > 0; }
+};
 
 struct RtcpSenderInfo {
     uint32_t ts_msw;
@@ -44,25 +48,30 @@ struct RtcpReportBlock {
 };
 
 enum class RtcpSDESItemType : int8_t {
-    CNAME = 1,
-    NAME = 2,
+    END = 0,
+    CNAME = 1, // 源唯一标识
+    NAME = 2,  // 描述源的名称
     EMAIL = 3,
     PHONE = 4,
-    LOC = 5,
+    LOC = 5, // 位置
     TOOL = 6,
-    NOTE = 7,
-    PRIV = 8
+    NOTE = 7, // 备注信息
+    PRIV = 8  // 私有扩展
+};
+
+struct RtcpSDESItemHead {
+    uint8_t type; // RtcpSDESItemType
+    uint8_t length;
 };
 
 struct RtcpSDESItem {
-    uint8_t type; // RtcpSDESItemType
-    uint8_t length;
-    char text[0];
+    RtcpSDESItemHead head;
+    std::string text;
 };
 
 struct RtcpSDESChunk {
     uint32_t ssrc;
-    RtcpSDESItem items[1];
+    std::vector<RtcpSDESItem> items;
 };
 
 /**
@@ -90,6 +99,51 @@ enum class RtcpPacketType : uint8_t {
     RTCP_RGRS = 212,  // RFC8861
 
     RTCP_LIMIT = 223,
+};
+
+struct RtcpMessage {
+    RtcpMessage() : header({0}) {}
+    virtual ~RtcpMessage() {}
+
+    RtcpHeader header;
+
+    virtual std::string Serialize() = 0;
+    virtual bool Deserialize(const char *buf,
+                             size_t size) = 0; // without header
+};
+
+struct RtcpSRMessage : public RtcpMessage {
+    RtcpSenderInfo sender_info;
+    std::vector<RtcpReportBlock> report_blocks;
+
+    std::string Serialize() override;
+    bool Deserialize(const char *buf, size_t size) override;
+};
+
+struct RtcpRRMessage : public RtcpMessage {
+    std::vector<RtcpReportBlock> report_blocks;
+
+    std::string Serialize() override;
+    bool Deserialize(const char *buf, size_t size) override;
+};
+
+struct RtcpSDESMessage : public RtcpMessage {
+    std::vector<RtcpSDESChunk> chunks;
+
+    std::string Serialize() override;
+    bool Deserialize(const char *buf, size_t size) override;
+};
+
+struct RtcpBYEMessage : public RtcpMessage {
+
+    std::string Serialize() override;
+    bool Deserialize(const char *buf, size_t size) override;
+};
+
+struct RtcpAPPMessage : public RtcpMessage {
+
+    std::string Serialize() override;
+    bool Deserialize(const char *buf, size_t size) override;
 };
 
 } // namespace muduo_media

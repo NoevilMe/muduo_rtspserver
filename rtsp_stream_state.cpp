@@ -41,26 +41,35 @@ void RtspStreamState::ParseRTCP(const char *buf, size_t size) {
     size_t parse_size = 0;
     size_t left_size = size;
     while (left_size > sizeof(RtcpHeader)) {
-        RtcpHeader rtcp = {0};
-        memcpy(&rtcp, buf + parse_size, sizeof(RtcpHeader));
-        rtcp.length = muduo::NetworkToHost16(rtcp.length);
-        rtcp.ssrc = muduo::NetworkToHost32(rtcp.ssrc);
+        RtcpHeader rtcp_header = {0};
+        memcpy(&rtcp_header, buf + parse_size, sizeof(RtcpHeader));
+        rtcp_header.length = muduo::NetworkToHost16(rtcp_header.length);
+        rtcp_header.ssrc = muduo::NetworkToHost32(rtcp_header.ssrc);
 
-        size_t packet_size = (rtcp.length + 1) * RTCP_LENGTH_WORDS;
+        size_t packet_size = (rtcp_header.length + 1) * RTCP_LENGTH_DWORD;
 
-        LOG_DEBUG << "RTCP V " << rtcp.v << ", P " << rtcp.p << ", RC "
-                  << rtcp.rc << ", PT " << rtcp.pt << ", length " << rtcp.length
-                  << ", ssrc " << rtcp.ssrc << ", RTCP packet size "
-                  << packet_size;
+        LOG_DEBUG << "RTCP V " << rtcp_header.v << ", P " << rtcp_header.p
+                  << ", RC " << rtcp_header.rc << ", PT " << rtcp_header.pt
+                  << ", length " << rtcp_header.length << ", ssrc "
+                  << rtcp_header.ssrc << ", RTCP packet size " << packet_size;
 
-        if (rtcp.pt == (uint8_t)RtcpPacketType::RTCP_RR) {
-            OnRtcpRR(rtcp.rc, buf + parse_size + sizeof(RtcpHeader),
-                     (rtcp.length - 1) * RTCP_LENGTH_WORDS);
-        } else if (rtcp.pt == (uint8_t)RtcpPacketType::RTCP_SDES) {
-            OnRtcpSDES(rtcp.rc,
-                       buf + parse_size + sizeof(RtcpHeader) -
-                           sizeof(rtcp.ssrc), // ssrc belongs to chunk
-                       rtcp.length * RTCP_LENGTH_WORDS);
+        if (rtcp_header.pt == (uint8_t)RtcpPacketType::RTCP_RR) {
+            std::unique_ptr<RtcpRRMessage> rtcp_rr(new RtcpRRMessage);
+            rtcp_rr->header = rtcp_header;
+            rtcp_rr->Deserialize(buf + parse_size + sizeof(RtcpHeader),
+                                 (rtcp_header.length - 1) * RTCP_LENGTH_DWORD);
+
+        } else if (rtcp_header.pt == (uint8_t)RtcpPacketType::RTCP_SDES) {
+            std::unique_ptr<RtcpSDESMessage> rtcp_sdes(new RtcpSDESMessage);
+            rtcp_sdes->header = rtcp_header;
+            rtcp_sdes->Deserialize(buf + parse_size + sizeof(RtcpHeader) -
+                                       sizeof(rtcp_header.ssrc),
+                                   rtcp_header.length * RTCP_LENGTH_DWORD);
+
+            // OnRtcpSDES(rtcp_header.rc,
+            //            buf + parse_size + sizeof(RtcpHeader) -
+            //                sizeof(rtcp_header.ssrc), // ssrc belongs to chunk
+            //            rtcp_header.length * RTCP_LENGTH_DWORD);
         }
 
         parse_size += packet_size;
@@ -101,17 +110,17 @@ void RtspStreamState::OnRtcpRR(uint8_t rc, const char *buf, size_t /*size*/) {
 void RtspStreamState::OnRtcpSDES(uint8_t rc, const char *buf, size_t size) {
     auto pdata = buf;
 
-    RtcpSDESChunk chunk{0};
-    memcpy(&chunk, pdata, sizeof(RtcpSDESChunk));
-    chunk.ssrc = muduo::NetworkToHost32(chunk.ssrc);
+    // RtcpSDESChunk chunk{0};
+    // memcpy(&chunk, pdata, sizeof(RtcpSDESChunk));
+    // chunk.ssrc = muduo::NetworkToHost32(chunk.ssrc);
 
-    pdata += sizeof(RtcpSDESChunk);
+    // pdata += sizeof(RtcpSDESChunk);
 
-    LOG_DEBUG << "chunk item type " << chunk.items[0].type << ", length "
-              << chunk.items[0].length << ", text "
-              << muduo::StringPiece(pdata, chunk.items[0].length);
+    // LOG_DEBUG << "chunk item type " << chunk.items[0].type << ", length "
+    //           << chunk.items[0].length << ", text "
+    //           << muduo::StringPiece(pdata, chunk.items[0].length);
 
-    pdata += chunk.items[0].length;
+    // pdata += chunk.items[0].length;
     LOG_DEBUG << "left SDES " << buf + size - pdata;
 }
 

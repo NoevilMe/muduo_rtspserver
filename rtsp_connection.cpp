@@ -78,8 +78,8 @@ void RtspConnection::OnMessage(const muduo::net::TcpConnectionPtr conn,
     auto data_ptr = buf->Peek();
     if (*data_ptr == kRtspInterleavedFrameMagic) {
         if (buf->ReadableBytes() < sizeof(RtspInterleavedFrame)) {
-            LOG_ERROR << "RTSP Interleaved Frame packet size must be >="
-                      << sizeof(RtspInterleavedFrame);
+            LOG_WARN << "RTSP Interleaved Frame packet size must be >="
+                     << sizeof(RtspInterleavedFrame);
             // 继续接收数据
             return;
         } else {
