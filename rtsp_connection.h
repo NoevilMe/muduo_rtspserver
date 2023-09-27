@@ -2,9 +2,9 @@
 #define D4439448_0C51_428E_913A_3171964D0153
 
 #include "eventloop/event_loop.h"
+#include "media/defs.h"
 #include "net/callback.h"
 #include "rtsp_message.h"
-#include "rtsp_type.h"
 
 namespace muduo_media {
 
@@ -85,7 +85,7 @@ private:
 
     std::shared_ptr<RtspSession> rtsp_session_;
 
-    RtpTransportProtocol rtp_transport_;
+    RtpTransProto rtp_transport_;
 };
 
 using RtspConnectionPtr = std::shared_ptr<RtspConnection>;

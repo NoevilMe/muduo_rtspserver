@@ -6,11 +6,10 @@
 #include <string>
 #include <vector>
 
+#define RTCP_VERSION 2
 #define RTCP_LENGTH_DWORD 4
 
 namespace muduo_media {
-
-#define RTCP_VERSION 2
 
 /**
  * RTCP固定头

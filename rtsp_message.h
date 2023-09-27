@@ -72,6 +72,13 @@ struct RtspResponseHead : public RtspStatusLine {
     int cseq = 0;
 };
 
+// RTP over tcp
+struct RtspInterleavedFrame {
+    uint8_t magic;
+    uint8_t channel;
+    uint16_t length;
+};
+
 } // namespace muduo_media
 
 #endif /* A2B03B7D_F0DE_4FAF_BE57_751F96E7384B */

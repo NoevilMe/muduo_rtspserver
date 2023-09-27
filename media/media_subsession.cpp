@@ -1,7 +1,8 @@
 #include "media_subsession.h"
 
 namespace muduo_media {
-MediaSubsession::MediaSubsession() {}
+MediaSubsession::MediaSubsession(unsigned int fps, unsigned int time_base)
+    : track_id_(0), fps_(fps), time_base_(time_base) {}
 
 MediaSubsession::~MediaSubsession() {}
 

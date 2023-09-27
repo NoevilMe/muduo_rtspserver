@@ -1,22 +1,26 @@
 #include "h264_file_subsession.h"
+#include "defs.h"
 #include "h264_file_source.h"
 #include "h264_video_rtp_sink.h"
 
 #include <cstring>
 
 namespace muduo_media {
-H264FileSubsession::H264FileSubsession(const std::string &filename)
-    : FileMediaSubsession(filename) {}
+H264FileSubsession::H264FileSubsession(const std::string &filename,
+                                       unsigned int fps, unsigned int time_base)
+    : FileMediaSubsession(filename, fps, time_base) {}
 
 H264FileSubsession::~H264FileSubsession() {}
 
 std::string H264FileSubsession::GetSdp() {
     char media_sdp[200] = {0};
     snprintf(media_sdp, sizeof(media_sdp),
-             "m=video 0 RTP/AVP 96\r\n"
-             "a=rtpmap:96 H264/90000\r\n"
-             "a=framerate:25\r\n"
+             "m=video 0 %s %d\r\n"
+             "a=rtpmap:%d %s/%u\r\n"
+             "a=framerate:%u\r\n"
              "a=control:%s\r\n",
+             defs::kSdpMediaProtocol, defs::kMediaFormatH264,
+             defs::kMediaFormatH264, defs::kMimeTypeH264, time_base_, fps_,
              TrackId().data());
     return media_sdp;
 }

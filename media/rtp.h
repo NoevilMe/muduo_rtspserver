@@ -11,7 +11,6 @@
 #define RTP_PAYLOAD_TYPE_H264 96
 #define RTP_PAYLOAD_TYPE_AAC 97
 
-
 #define RTP_HEADER_SIZE 12
 #define RTP_MAX_PAYLOAD_SIZE 1400 // 最大1460，  1500(MTU)-20(IP)-8(UDP)-12(RTP)
 
@@ -21,6 +20,8 @@
 #define RTP_FU_A_HEAD_LEN 2 //  FU Indicator +  FU Header
 
 static_assert(RTP_PACKET_PREPEND_SIZE > RTP_HEADER_SIZE);
+
+namespace muduo_media {
 
 /*  https://www.rfc-editor.org/rfc/rfc3550.txt
  *
@@ -80,5 +81,7 @@ struct RtpPacket {
     uint32_t timestamp;
     uint8_t last_marker;
 };
+
+} // namespace muduo_media
 
 #endif /* F3741B40_B876_441F_9130_91995A20EA31 */

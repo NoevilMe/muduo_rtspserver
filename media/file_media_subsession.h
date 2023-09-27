@@ -7,7 +7,8 @@ namespace muduo_media {
 
 class FileMediaSubsession : public MediaSubsession {
 protected: // we're a virtual base class
-    FileMediaSubsession(const std::string &filename);
+    FileMediaSubsession(const std::string &filename, unsigned int fps = 25,
+                        unsigned int time_base = 90000);
     virtual ~FileMediaSubsession();
 
 protected:

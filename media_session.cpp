@@ -1,6 +1,7 @@
 #include "media_session.h"
 #include "eventloop/event_loop.h"
 #include "media/av_packet.h"
+#include "media/defs.h"
 
 #include <cstring>
 #include <ctime>
@@ -44,9 +45,11 @@ std::string MediaSession::BuildSdp() {
     snprintf(session_sdp, sizeof(session_sdp),
              "v=0\r\n"
              "o=- 9%ld 1 IN IP4 %s\r\n"
+             "s=%s\r\n"
              "t=0 0\r\n"
-             "a=control:*\r\n",
-             (long)std::time(NULL), ip.data());
+             "a=control:*\r\n"
+             "a=range:npt=now-\r\n",
+             (long)std::time(NULL), ip.data(), defs::kAppName);
 
     std::string data(session_sdp);
 
@@ -56,28 +59,6 @@ std::string MediaSession::BuildSdp() {
     }
 
     return data;
-}
-
-void MediaSession::Play(muduo::event_loop::EventLoop *loop,
-                        unsigned int rtsp_session_id,
-                        std::vector<std::string> track) {}
-
-void MediaSession::PlayReadFrame(std::shared_ptr<MediaSubsession> subsession) {
-    // int buf_size = 2000000;
-    // std::unique_ptr<uint8_t> frame_buf(new uint8_t[buf_size]);
-
-    // bool end_of_frame = false;
-    // int frame_size =
-    //     subsession->ReadFrame((char *)frame_buf.get(), buf_size,
-    //     &end_of_frame);
-    // if (frame_size > 0) {
-    //     AVPacket videoFrame = {0};
-    //     videoFrame.type = 0;
-    //     videoFrame.size = frame_size;
-    //     videoFrame.timestamp = 0;
-    //     videoFrame.buffer.reset(new uint8_t[videoFrame.size]);
-    //     memcpy(videoFrame.buffer.get(), frame_buf.get(), videoFrame.size);
-    // }
 }
 
 } // namespace muduo_media

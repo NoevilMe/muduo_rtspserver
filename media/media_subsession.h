@@ -17,13 +17,19 @@ namespace muduo_media {
 
 class MediaSubsession {
 public:
-    MediaSubsession();
+    MediaSubsession(unsigned int fps = 25, unsigned int time_base = 90000);
     virtual ~MediaSubsession();
 
     std::string TrackId();
 
     unsigned int track_id() const { return track_id_; }
     void set_track_id(unsigned int id) { track_id_ = id; }
+
+    unsigned int fps() const { return fps_; }
+    void set_fps(unsigned int fps) { fps_ = fps; }
+
+    unsigned int time_base() const { return time_base_; }
+    void set_time_base(unsigned int time_base) { time_base_ = time_base; }
 
     virtual std::string GetSdp() = 0;
 
@@ -38,6 +44,8 @@ public:
 
 protected:
     unsigned int track_id_;
+    unsigned int fps_;
+    unsigned int time_base_;
 };
 
 using MediaSubsessionPtr = std::shared_ptr<MediaSubsession>;

@@ -8,7 +8,8 @@ namespace muduo_media {
 class H264FileSubsession : public FileMediaSubsession {
 
 public:
-    H264FileSubsession(const std::string &filename);
+    H264FileSubsession(const std::string &filename, unsigned int fps = 25,
+                       unsigned int time_base = 90000);
     ~H264FileSubsession();
 
     std::string GetSdp() override;

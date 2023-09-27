@@ -47,7 +47,7 @@ RtspConnection::RtspConnection(const muduo::net::TcpConnectionPtr &conn,
       get_media_session_callback_(cb),
       next_type_(kMessageNone),
       next_ilframe_({0, 0}),
-      rtp_transport_(RtpTransportProtocol::kRtpTransportNone) {
+      rtp_transport_(RtpTransProto::kRtpTransportNone) {
 
     // 消息回调最迟要在tcp connection before_reading_callback 中来设置
     tcp_conn_->set_message_callback(
@@ -76,7 +76,7 @@ void RtspConnection::OnMessage(const muduo::net::TcpConnectionPtr conn,
     LOG_TRACE << "try receive data [" << data << "]";
 
     auto data_ptr = buf->Peek();
-    if (*data_ptr == kRtspInterleavedFrameMagic) {
+    if (*data_ptr == defs::kRtspInterleavedFrameMagic) {
         if (buf->ReadableBytes() < sizeof(RtspInterleavedFrame)) {
             LOG_WARN << "RTSP Interleaved Frame packet size must be >="
                      << sizeof(RtspInterleavedFrame);
@@ -296,7 +296,7 @@ void RtspConnection::HandleMethodDescribe(
     resp_head.version = head->version;
     resp_head.cseq = head->cseq;
 
-    if (accept_application_type != kRtspApplicationSdp) {
+    if (accept_application_type != defs::kRtspApplicationSdp) {
         resp_head.code = RtspStatusCode::UnsupportedMediaType;
         SendShortResponse(resp_head);
     } else {
@@ -387,7 +387,7 @@ void RtspConnection::HandleMethodSetup(
         return;
     }
 
-    if (transport.find(kRtpTransportProtocolTcp) != std::string::npos) { // tcp
+    if (transport.find(defs::kRtpOverTcp) != std::string::npos) { // tcp
 
         char protocol_buf[20] = {0};
         char cast_buf[20] = {0};
@@ -396,14 +396,14 @@ void RtspConnection::HandleMethodSetup(
         if (sscanf(transport.data(), "%[^;];%[^;];interleaved=%hu-%hu",
                    protocol_buf, cast_buf, &rtp_channel, &rtcp_channel) != 4) {
             LOG_ERROR << "unsupported setup params for transport "
-                      << kRtpTransportProtocolTcp;
+                      << defs::kRtpOverTcp;
 
             resp_head.code = RtspStatusCode::UnsupportedTransport;
             SendShortResponse(resp_head);
             return;
         }
 
-        rtp_transport_ = RtpTransportProtocol::kRtpOverTcp;
+        rtp_transport_ = RtpTransProto::kRtpOverTcp;
 
         std::string protocol(protocol_buf);
         std::string cast(cast_buf);
@@ -433,8 +433,7 @@ void RtspConnection::HandleMethodSetup(
                             RtspStatusCodeToString(resp_head.code),
                             resp_head.cseq, transport.data(), session_id);
         SendResponse(send_buf, size);
-    } else if (transport.find(kRtpTransportProtocolUdp) !=
-               std::string::npos) { // udp
+    } else if (transport.find(defs::kRtpOverUdp) != std::string::npos) { // udp
 
         unsigned short rtp_port = 0;
         unsigned short rtcp_port = 0;
@@ -444,13 +443,13 @@ void RtspConnection::HandleMethodSetup(
         if (sscanf(transport.data(), "%[^;];%[^;];client_port=%hu-%hu", pro_buf,
                    cast_buf, &rtp_port, &rtcp_port) != 4) {
             LOG_ERROR << "unsupported setup params for transport "
-                      << kRtpTransportProtocolUdp;
+                      << defs::kRtpOverUdp;
             resp_head.code = RtspStatusCode::UnsupportedTransport;
             SendShortResponse(resp_head);
             return;
         }
 
-        rtp_transport_ = RtpTransportProtocol::kRtpOverUdp;
+        rtp_transport_ = RtpTransProto::kRtpOverUdp;
 
         std::string protocol(pro_buf);
         std::string cast(cast_buf);

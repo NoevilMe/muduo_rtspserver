@@ -27,12 +27,6 @@ public:
 
     std::string BuildSdp();
 
-    void Play(muduo::event_loop::EventLoop *loop, unsigned int rtsp_session_id,
-              std::vector<std::string> track);
-
-private:
-    void PlayReadFrame(std::shared_ptr<MediaSubsession> subsession);
-
 private:
     std::string name_;
     std::map<std::string, std::shared_ptr<MediaSubsession>> subsessions_;
