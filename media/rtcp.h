@@ -85,16 +85,17 @@ enum class RtcpPacketType : uint8_t {
     RTCP_SMPTETC = 194, // RFC5484
     RTCP_IJ = 195,      // RFC5450
 
-    RTCP_SR = 200,   // 发送者报告
-    RTCP_RR = 201,   // 接受者报告
-    RTCP_SDES = 202, // 源点描述
-    RTCP_BYE = 203,  // 结束传输
-    RTCP_APP = 204,  // 特定应用
+    RTCP_SR = 200,   // 发送者报告 RFC3550
+    RTCP_RR = 201,   // 接受者报告 RFC3550
+    RTCP_SDES = 202, // 源点描述 RFC3550
+    RTCP_BYE = 203,  // 结束传输 RFC3550
+    RTCP_APP = 204,  // 特定应用 RFC3550
 
     RTCP_RTPFB = 205, // RTP Feedback, RFC4585
     RTCP_PSFB = 206,  // PS Feedback, RFC4585
     RTCP_XR = 207,    // RFC3611
-    RTCP_AVB = 208,
+    RTCP_AVB = 208,   // IEEE1733
+
     RTCP_RSI = 209,   // RFC5760
     RTCP_TOKEN = 210, // RFC6284
     RTCP_IDMS = 211,  // RFC7272

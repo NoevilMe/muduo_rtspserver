@@ -1,7 +1,7 @@
 #include "logger/logger.h"
 #include "media/h264_file_subsession.h"
-#include "media_session.h"
-#include "rtsp_server.h"
+#include "rtsp/media_session.h"
+#include "rtsp/rtsp_server.h"
 #include <iostream>
 
 int main() {

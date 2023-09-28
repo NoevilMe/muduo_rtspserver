@@ -24,17 +24,20 @@ set(LIB_MEDIA_SRC
 add_library(media ${LIB_MEDIA_SRC})
 target_include_directories(media PUBLIC ${SERVER_TOP} ${SERVER_TOP}/tinymuduo)
 
-set(MUDUO_MEDIA_SRC
-    main.cpp
-    rtsp_server.cpp
-    rtsp_connection.cpp
-    rtsp_message.cpp
-    utils.cpp
-    media_session.cpp
-    rtsp_session.cpp
-    stream_state.cpp
-    rtsp_stream_state.cpp)
+set(LIB_RTSP_SRC
+    rtsp/rtsp_server.cpp
+    rtsp/rtsp_connection.cpp
+    rtsp/rtsp_message.cpp
+    rtsp/utils.cpp
+    rtsp/media_session.cpp
+    rtsp/rtsp_session.cpp
+    rtsp/stream_state.cpp
+    rtsp/rtsp_stream_state.cpp)
 
+add_library(rtsp ${LIB_RTSP_SRC})
+target_link_libraries(rtsp PUBLIC media muduo_net)
+target_include_directories(rtsp PUBLIC ${SERVER_TOP} ${SERVER_TOP}/tinymuduo)
+
+set(MUDUO_MEDIA_SRC main.cpp)
 add_executable(muduo_media_server ${MUDUO_MEDIA_SRC})
-target_link_libraries(muduo_media_server PRIVATE muduo_net media pthread)
-target_include_directories(muduo_media_server PUBLIC ${SERVER_TOP}/tinymuduo)
+target_link_libraries(muduo_media_server PRIVATE rtsp)
