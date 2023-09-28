@@ -67,6 +67,8 @@
         "iomanip": "cpp",
         "buffer": "cpp",
         "internet": "cpp",
-        "socket": "cpp"
+        "socket": "cpp",
+        "executor": "cpp",
+        "future": "cpp"
     }
 }

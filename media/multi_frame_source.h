@@ -11,11 +11,16 @@ class AVPacket;
 
 class MultiFrameSource : public MediaSource {
 public:
-    MultiFrameSource() = default;
+    MultiFrameSource();
     virtual ~MultiFrameSource() = default;
 
     virtual bool GetNextFrame(AVPacket *) = 0;
-    virtual uint32_t SSRC() = 0;
+
+    uint32_t ssrc() const { return ssrc_; }
+    void set_ssrc(uint32_t ssrc) { ssrc_ = ssrc; }
+
+protected:
+    uint32_t ssrc_;
 };
 
 using MultiFrameSourcePtr = std::shared_ptr<MultiFrameSource>;

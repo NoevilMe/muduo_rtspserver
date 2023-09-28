@@ -2,8 +2,11 @@
 #include "eventloop/endian.h"
 #include "logger/logger.h"
 #include "media/av_packet.h"
+#include "media/defs.h"
 #include "media/rtcp.h"
 #include "media/rtp.h"
+
+#include <random>
 
 namespace muduo_media {
 
@@ -15,7 +18,8 @@ RtspStreamState::RtspStreamState(muduo::event_loop::EventLoop *loop,
       media_subsession_(media_subsession),
       rtp_sink_(rtp_sink),
       frame_source_(frame_source),
-      last_rtp_ts_(0) {
+      last_rtp_ts_(0),
+      play_interval_(0.0) {
 
     LOG_DEBUG << "RtspStreamState::ctor at " << this;
 }
@@ -31,7 +35,15 @@ RtspStreamState::~RtspStreamState() {
 
 void RtspStreamState::Play() {
     playing_ = true;
-    loop_->QueueInLoop(std::bind(&RtspStreamState::PlayOnce, this));
+    try {
+        ts_duration_ = media_subsession_->Duration();
+        play_interval_ = 1 / media_subsession_->fps();
+    } catch (...) {
+        ts_duration_ = defs::kMediaTsDuration;
+        play_interval_ = 0.04;
+    }
+
+    loop_->QueueInLoop(std::bind(&RtspStreamState::PlayOnce, this, true));
 }
 
 void RtspStreamState::Teardown() { playing_ = false; }
@@ -95,7 +107,7 @@ void RtspStreamState::SendRtcpBye() {
         std::vector<std::shared_ptr<RtcpMessage>> msgs;
 
         std::shared_ptr<RtcpSRMessage> sr = std::make_shared<RtcpSRMessage>();
-        sr->header.ssrc = frame_source_->SSRC();
+        sr->header.ssrc = frame_source_->ssrc();
         auto &sender_info = sr->sender_info;
 
         auto ts = muduo::event_loop::Timestamp::TimespecNow();
@@ -115,14 +127,14 @@ void RtspStreamState::SendRtcpBye() {
 
         std::shared_ptr<RtcpBYEMessage> bye =
             std::make_shared<RtcpBYEMessage>();
-        bye->header.ssrc = frame_source_->SSRC();
+        bye->header.ssrc = frame_source_->ssrc();
 
         msgs.push_back(bye);
         rtcp_cb_(msgs);
     }
 }
 
-void RtspStreamState::PlayOnce() {
+void RtspStreamState::PlayOnce(bool update_ts) {
     if (!playing_) {
         LOG_DEBUG << "not playing at " << this;
         return;
@@ -134,6 +146,11 @@ void RtspStreamState::PlayOnce() {
         return;
     }
 
+    if (0 == last_rtp_ts_) {
+        std::random_device rd;
+        last_rtp_ts_ = rd() & 0xffffff;
+    }
+
     AVPacket frame_packet;
     // 读取一帧, 获取NALU
     // 同一帧可能有多个NALU，如果是同一个帧的多个NALU则需要立即发送
@@ -141,34 +158,34 @@ void RtspStreamState::PlayOnce() {
         LOG_ERROR << "frame source get next frame fail";
         SendRtcpBye();
     } else {
-        LOG_DEBUG << "data length " << frame_packet.size;
+
         ++play_frames_;
 
         ++play_packets_;
         //  打包成RTP并发送
 
-        std::shared_ptr<RtpHeader> rtp_header = std::make_shared<RtpHeader>();
-        ::bzero(rtp_header.get(), sizeof(RtpHeader));
-        rtp_header->version = RTP_VESION;
-        rtp_header->padding = 0;
-        rtp_header->extension = 0;
-        rtp_header->csrcLen = 0;
-        rtp_header->marker = 1; //  最后一帧
-        rtp_header->payloadType = RTP_PAYLOAD_TYPE_H264;
-        rtp_header->seq = 0; // rtp sink will modify this value
-        rtp_header->timestamp = muduo::HostToNetwork32(
-            frame_packet.timestamp); // 需要根据源计算 htonl()
-        rtp_header->ssrc =
-            muduo::HostToNetwork32(frame_source_->SSRC()); // 信号源id
+        if (update_ts) {
+            last_rtp_ts_ += ts_duration_;
+        }
 
-        rtp_sink_->Send(frame_packet.buffer.get(), frame_packet.size,
-                        rtp_header);
+        LOG_TRACE << "NALU " << frame_packet.type << ", length "
+                  << frame_packet.size << ", ts " << last_rtp_ts_;
 
-        last_rtp_ts_ = frame_packet.timestamp;
+        AVPacketInfo info;
+        info.payload_type = media_subsession_->payload_type();
+        info.timestamp = last_rtp_ts_;
+        info.ssrc = frame_source_->ssrc();
 
-        // 计划下一次发送
-        if (frame_packet.size > 0) {
-            loop_->RunAfter(0.04, std::bind(&RtspStreamState::PlayOnce, this));
+        rtp_sink_->Send(frame_packet, info);
+
+        if (frame_packet.type == NALU_TYPE_PPS ||
+            frame_packet.type == NALU_TYPE_SEI ||
+            frame_packet.type == NALU_TYPE_SPS) {
+            loop_->QueueInLoop(
+                std::bind(&RtspStreamState::PlayOnce, this, false));
+        } else if (frame_packet.size > 0) { // 计划下一次发送
+            loop_->RunAfter(0.04,
+                            std::bind(&RtspStreamState::PlayOnce, this, true));
         }
     }
 }

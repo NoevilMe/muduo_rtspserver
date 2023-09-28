@@ -1,8 +1,12 @@
 #ifndef EA95BB86_1133_410D_A312_D3B63AE2A142
 #define EA95BB86_1133_410D_A312_D3B63AE2A142
 
+#define INTERLEAVED_FRAME_SIZE 4
+
 namespace muduo_media {
 namespace defs {
+
+constexpr auto kBufPrependSize = 20;
 
 constexpr auto kAppName = "Muduo Media Server";
 
@@ -31,6 +35,7 @@ enum class RtpTransportProtocol {
 };
 
 constexpr int kMediaFormatH264 = 96;
+constexpr int kMediaTsDuration = 3600; // 9000/25
 
 /*================ RTSP ==================*/
 constexpr auto kRtspApplicationSdp = "application/sdp";

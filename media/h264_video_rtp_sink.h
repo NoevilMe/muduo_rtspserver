@@ -4,6 +4,7 @@
 #include "multi_frame_rtp_sink.h"
 #include "net/tcp_connection.h"
 #include "net/udp_virtual_connection.h"
+#include "rtp.h"
 
 namespace muduo_media {
 
@@ -17,14 +18,21 @@ public:
     virtual ~H264VideoRtpSink();
 
     void Send(const unsigned char *data, int len,
-              const std::shared_ptr<void> &add_data) override;
+              const std::shared_ptr<void> &info) override;
+
+    void Send(const AVPacket &pkt, const AVPacketInfo &info) override;
 
 private:
     void SendOverTcp(const unsigned char *data, int len,
-                     const std::shared_ptr<void> &add_data);
+                     const std::shared_ptr<void> &info);
 
     void SendOverUdp(const unsigned char *data, int len,
-                     const std::shared_ptr<void> &add_data);
+                     const std::shared_ptr<void> &info);
+
+    void SendOverTcp(const AVPacket &pkt,
+                     const std::shared_ptr<RtpHeader> &header);
+    void SendOverUdp(const AVPacket &pkt,
+                     const std::shared_ptr<RtpHeader> &header);
 
 private:
     muduo::net::TcpConnectionPtr tcp_conn_;

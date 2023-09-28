@@ -1,4 +1,5 @@
 #include "h264_file_source.h"
+#include "defs.h"
 #include "eventloop/timestamp.h"
 #include "logger/logger.h"
 #include "media/av_packet.h"
@@ -8,41 +9,7 @@
 
 namespace muduo_media {
 
-typedef enum {
-    NALU_TYPE_SLICE = 1,
-    NALU_TYPE_DPA = 2,
-    NALU_TYPE_DPB = 3,
-    NALU_TYPE_DPC = 4,
-    NALU_TYPE_IDR = 5,
-    NALU_TYPE_SEI = 6,
-    NALU_TYPE_SPS = 7,
-    NALU_TYPE_PPS = 8,
-    NALU_TYPE_AUD = 9,
-    NALU_TYPE_EOSEQ = 10,
-    NALU_TYPE_EOSTREAM = 11,
-    NALU_TYPE_FILL = 12,
-} H264NaluType;
 
-typedef enum {
-    NALU_PRIORITY_DISPOSABLE = 0,
-    NALU_PRIRITY_LOW = 1,
-    NALU_PRIORITY_HIGH = 2,
-    NALU_PRIORITY_HIGHEST = 3
-} H264NaluPriority;
-
-void H264Nalu::AppendData(unsigned char *data_buf, size_t data_len) {
-    if (max_size - len >= data_len) { // space is not enough
-        memcpy(this->buf + this->len, data_buf, data_len);
-        this->len += data_len;
-    } else {
-        this->max_size = this->max_size << 1;
-        unsigned char *new_buf = new unsigned char[this->max_size];
-        memcpy(new_buf, this->buf, this->len);
-        delete[] this->buf;
-        this->buf = new_buf;
-        this->AppendData(data_buf, data_len);
-    }
-}
 
 static bool MatchStartCode3Bytes(unsigned char *Buf) {
     if (Buf[0] != 0 || Buf[1] != 0 || Buf[2] != 1)
@@ -58,8 +25,7 @@ static bool MatchStartCode4Bytes(unsigned char *Buf) {
         return true;
 }
 
-H264FileSource::H264FileSource(FILE *file)
-    : MultiFrameFileSource(file), ssrc_(0) {
+H264FileSource::H264FileSource(FILE *file) : MultiFrameFileSource(file) {
     LOG_DEBUG << "H264FileSource::ctor at " << this;
 
     std::random_device rd;
@@ -70,9 +36,11 @@ H264FileSource::~H264FileSource() {
     LOG_DEBUG << "H264FileSource::dtor at " << this;
 }
 
-int H264FileSource::GetAnnexbNALU(H264Nalu *nalu) {
+int H264FileSource::GetNextNALU(H264Nalu *nalu) {
     nalu->len = 0; // reset immediately
     nalu->statcode_length = 0;
+    // >= kInterleavedFrameSize + RTP_HEADER_SIZE
+    nalu->prepend_size = defs::kBufPrependSize;
 
     size_t data_buf_len = 10000;
     unsigned char *data_buf = new unsigned char[data_buf_len];
@@ -130,7 +98,7 @@ int H264FileSource::GetAnnexbNALU(H264Nalu *nalu) {
             rewind = -3;
             if (0 != fseek(file_, rewind, SEEK_CUR)) {
                 delete[] data_buf;
-                printf("GetAnnexbNALU: Cannot fseek in the bit stream file");
+                printf("GetNextNALU: Cannot fseek in the bit stream file");
                 return -1;
             }
 
@@ -160,7 +128,7 @@ int H264FileSource::GetAnnexbNALU(H264Nalu *nalu) {
 
     if (0 != fseek(file_, rewind, SEEK_CUR)) {
         delete[] data_buf;
-        printf("GetAnnexbNALU: Cannot fseek in the bit stream file");
+        printf("GetNextNALU: Cannot fseek in the bit stream file");
         return -1;
     }
 
@@ -173,9 +141,9 @@ int H264FileSource::GetAnnexbNALU(H264Nalu *nalu) {
     }
     delete[] data_buf;
 
-    nalu->forbidden_bit = nalu->buf[0] & 0x80;     // 1 bit
-    nalu->nal_reference_bit = nalu->buf[0] & 0x60; // 2 bit
-    nalu->nal_unit_type = (nalu->buf[0]) & 0x1f;   // 5 bit
+    nalu->forbidden_bit = nalu->buf[nalu->prepend_size] & 0x80;     // 1 bit
+    nalu->nal_reference_idc = nalu->buf[nalu->prepend_size] & 0x60; // 2 bit
+    nalu->nal_unit_type = (nalu->buf[nalu->prepend_size]) & 0x1f;   // 5 bit
 
     return nalu->len + nalu->statcode_length;
 }
@@ -185,26 +153,24 @@ bool H264FileSource::GetNextFrame(AVPacket *packet) {
         return false;
     }
 
-    std::unique_ptr<H264Nalu> n(new H264Nalu);
+    std::unique_ptr<H264Nalu> nalu(new H264Nalu);
+    ::bzero(nalu.get(), sizeof(H264Nalu));
+
     int buffersize = 100000;
+    nalu->max_size = buffersize;
+    nalu->buf.reset(new unsigned char[buffersize]);
 
-    n->max_size = buffersize;
-    n->buf = new unsigned char[buffersize];
-
-    int data_lenth = GetAnnexbNALU(n.get());
+    int data_lenth = GetNextNALU(nalu.get());
     if (data_lenth > 0) {
-        packet->size = n->len;
-        packet->buffer.reset(n->buf);
+        packet->size = nalu->len;
+        packet->buffer = nalu->buf;
+        packet->prepend_size = nalu->prepend_size;
+        packet->type = nalu->nal_unit_type;
 
-        auto now = muduo::event_loop::Timestamp::Now();
-        packet->timestamp = (now.MicrosecondsSinceEpoch() + 500) / 1000 * 90;
-    } else {
-        delete[] n->buf;
+        return true;
     }
 
-    return data_lenth > 0;
+    return false;
 }
-
-uint32_t H264FileSource::SSRC() { return ssrc_; }
 
 } // namespace muduo_media

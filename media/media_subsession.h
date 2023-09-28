@@ -31,6 +31,12 @@ public:
     unsigned int time_base() const { return time_base_; }
     void set_time_base(unsigned int time_base) { time_base_ = time_base; }
 
+    // 时间戳步进
+    unsigned int Duration() const;
+
+    unsigned char payload_type() const { return payload_type_; }
+    void set_payload_type(unsigned char type) { payload_type_ = type; }
+
     virtual std::string GetSdp() = 0;
 
     virtual RtpSinkPtr
@@ -46,6 +52,7 @@ protected:
     unsigned int track_id_;
     unsigned int fps_;
     unsigned int time_base_;
+    unsigned char payload_type_;
 };
 
 using MediaSubsessionPtr = std::shared_ptr<MediaSubsession>;

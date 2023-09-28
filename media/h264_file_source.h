@@ -1,26 +1,10 @@
 #ifndef BFF1D915_36C9_46D9_8CAE_4C2B2782D200
 #define BFF1D915_36C9_46D9_8CAE_4C2B2782D200
 
+#include "av_packet.h"
 #include "multi_frame_file_source.h"
 
-#include <cstdio>
-
 namespace muduo_media {
-
-typedef struct {
-    int statcode_length;   //! 4 for parameter sets and first slice in
-                           //! picture, 3 for everything else (suggested)
-    int forbidden_bit;     //! should be always FALSE
-    int nal_reference_bit; //! NALU_PRIORITY_xxxx
-    int nal_unit_type;     //! NALU_TYPE_xxxx
-
-    size_t len;      //! Length of the NAL unit (Excluding the start code, which
-                     //! does not belong to the NALU)
-    size_t max_size; //! Nal Unit Buffer size
-    unsigned char *buf; //! contains the first byte followed by the EBSP
-
-    void AppendData(unsigned char *data_buf, size_t data_len);
-} H264Nalu;
 
 class H264FileSource : public MultiFrameFileSource {
 public:
@@ -28,13 +12,9 @@ public:
     ~H264FileSource();
 
     bool GetNextFrame(AVPacket *) override;
-    uint32_t SSRC() override;
 
 private:
-    int GetAnnexbNALU(H264Nalu *nalu);
-
-private:
-    uint32_t ssrc_;
+    int GetNextNALU(H264Nalu *nalu);
 };
 
 } // namespace muduo_media

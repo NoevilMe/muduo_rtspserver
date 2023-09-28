@@ -36,7 +36,7 @@ public:
                           muduo::event_loop::Timestamp);
 
 private:
-    void PlayOnce();
+    void PlayOnce(bool update_ts);
 
     void SendRtcpBye();
 
@@ -48,6 +48,8 @@ private:
     SendRtcpMessageCallback rtcp_cb_;
 
     uint32_t last_rtp_ts_;
+    uint32_t ts_duration_;
+    double play_interval_;
 };
 
 using RtspStreamStatePtr = std::shared_ptr<RtspStreamState>;
